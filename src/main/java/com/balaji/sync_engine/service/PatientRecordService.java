@@ -1,21 +1,18 @@
 package com.balaji.sync_engine.service;
 
-import com.balaji.sync_engine.entity.PatientRecord;
-
-
-
-import com.balaji.sync_engine.repository.PatientRecordRepository;
-import org.springframework.stereotype.Service;
+import com.balaji.sync_engine.clock.HybridLogicalClock;
 import com.balaji.sync_engine.entity.ChangeEvent;
 import com.balaji.sync_engine.entity.ChangeType;
+import com.balaji.sync_engine.entity.PatientRecord;
 import com.balaji.sync_engine.repository.ChangeEventRepository;
+import com.balaji.sync_engine.repository.PatientRecordRepository;
+import org.springframework.stereotype.Service;
 import tools.jackson.databind.json.JsonMapper;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicLong;
 
 @Service
 public class PatientRecordService {
@@ -26,16 +23,16 @@ public class PatientRecordService {
     private final PatientRecordRepository patientRepository;
     private final ChangeEventRepository changeEventRepository;
     private final JsonMapper jsonMapper;
-
-    // Temporary in-memory sequence counter — we'll revisit this in Phase 3.
-    private final AtomicLong sequenceCounter = new AtomicLong(0);
+    private final HybridLogicalClock clock;
 
     public PatientRecordService(PatientRecordRepository patientRepository,
                                  ChangeEventRepository changeEventRepository,
-                                 JsonMapper jsonMapper) {
+                                 JsonMapper jsonMapper,
+                                 HybridLogicalClock clock) {
         this.patientRepository = patientRepository;
         this.changeEventRepository = changeEventRepository;
         this.jsonMapper = jsonMapper;
+        this.clock = clock;
     }
 
     @Transactional
@@ -79,7 +76,7 @@ public class PatientRecordService {
         event.setEntityId(entityId);
         event.setChangeType(changeType);
         event.setDeviceId(SERVER_DEVICE_ID);
-        event.setSequenceNumber(sequenceCounter.incrementAndGet());
+        event.setHlcTimestamp(clock.tick().toString());
         event.setPayload(jsonMapper.writeValueAsString(record));
         changeEventRepository.save(event);
     }
