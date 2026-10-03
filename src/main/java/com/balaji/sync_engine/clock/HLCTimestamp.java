@@ -57,7 +57,7 @@ public final class HLCTimestamp implements Comparable<HLCTimestamp> {
 
     @Override
     public String toString() {
-        return physicalTime + "-" + counter + "-" + nodeId;
+        return String.format("%019d-%010d-%s", physicalTime, counter, nodeId);
     }
 
     public static HLCTimestamp parse(String encoded) {

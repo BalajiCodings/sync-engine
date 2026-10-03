@@ -1,6 +1,7 @@
 package com.balaji.sync_engine.entity;
 
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -39,7 +40,7 @@ public class ChangeEvent {
     private String deviceId;
 
     @Column(nullable = false)
-    private Long sequenceNumber;
+    private String hlcTimestamp;
 
     @Column(nullable = false, updatable = false)
     private Instant serverReceivedAt;
