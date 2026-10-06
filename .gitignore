@@ -129,3 +129,8 @@ generated/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example

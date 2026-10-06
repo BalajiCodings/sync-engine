@@ -1,12 +1,12 @@
 package com.balaji.sync_engine.entity;
 
 import jakarta.persistence.*;
-
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.springframework.data.domain.Persistable;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -16,10 +16,9 @@ import java.util.UUID;
 @Getter
 @Setter
 @NoArgsConstructor
-public class ChangeEvent {
+public class ChangeEvent implements Persistable<UUID> {
 
     @Id
-    @GeneratedValue
     private UUID eventId;
 
     @Column(nullable = false)
@@ -45,8 +44,27 @@ public class ChangeEvent {
     @Column(nullable = false, updatable = false)
     private Instant serverReceivedAt;
 
+    @Transient
+    private boolean isNew = true;
+
     @PrePersist
     protected void onCreate() {
         this.serverReceivedAt = Instant.now();
+    }
+
+    @Override
+    public UUID getId() {
+        return eventId;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @PostPersist
+    @PostLoad
+    void markNotNew() {
+        this.isNew = false;
     }
 }

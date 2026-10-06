@@ -1,6 +1,7 @@
 package com.balaji.sync_engine.service;
 
 import com.balaji.sync_engine.clock.HybridLogicalClock;
+
 import com.balaji.sync_engine.entity.ChangeEvent;
 import com.balaji.sync_engine.entity.ChangeType;
 import com.balaji.sync_engine.entity.PatientRecord;
@@ -72,6 +73,7 @@ public class PatientRecordService {
 
     private void logChange(UUID entityId, ChangeType changeType, PatientRecord record) {
         ChangeEvent event = new ChangeEvent();
+        event.setEventId(UUID.randomUUID());   // ← new line — we generate it explicitly now
         event.setEntityType(ENTITY_TYPE);
         event.setEntityId(entityId);
         event.setChangeType(changeType);
