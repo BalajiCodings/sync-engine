@@ -1,12 +1,14 @@
 package com.balaji.sync_engine.service;
 
 import com.balaji.sync_engine.clock.HLCTimestamp;
+
 import com.balaji.sync_engine.clock.HybridLogicalClock;
 import com.balaji.sync_engine.dto.SyncPullRequest;
 import com.balaji.sync_engine.dto.SyncPullResponse;
 import com.balaji.sync_engine.dto.SyncPushRequest;
 import com.balaji.sync_engine.dto.SyncPushResponse;
 import com.balaji.sync_engine.entity.ChangeEvent;
+import com.balaji.sync_engine.entity.ChangeType;
 import com.balaji.sync_engine.repository.ChangeEventRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,10 +21,12 @@ public class SyncService {
 
     private final ChangeEventRepository changeEventRepository;
     private final HybridLogicalClock clock;
+    private final ConflictResolutionService conflictResolutionService;
 
-    public SyncService(ChangeEventRepository changeEventRepository, HybridLogicalClock clock) {
+    public SyncService(ChangeEventRepository changeEventRepository, HybridLogicalClock clock, ConflictResolutionService conflictResolutionService) {
         this.changeEventRepository = changeEventRepository;
         this.clock = clock;
+        this.conflictResolutionService = conflictResolutionService;
     }
 
     public SyncPullResponse pull(SyncPullRequest request) {
@@ -43,7 +47,7 @@ public class SyncService {
 
     @Transactional
     public SyncPushResponse push(SyncPushRequest request) {
-        List<String> conflicted = new ArrayList<>();
+        List<String> allConflictReasons = new ArrayList<>();
         int accepted = 0;
 
         for (ChangeEvent incoming : request.changes()) {
@@ -52,9 +56,14 @@ public class SyncService {
 
             boolean alreadyExists = changeEventRepository.existsById(incoming.getEventId());
             if (alreadyExists) {
-                // Idempotency: this event was already applied in a previous,
-                // possibly interrupted, push. Skip silently — covered properly in Phase 6.
                 continue;
+            }
+
+            if (incoming.getChangeType() != ChangeType.DELETE) {
+                ConflictResolutionService.ApplyResult result = conflictResolutionService.applyIncomingChange(
+                        incoming.getEntityType(), incoming.getEntityId(), incoming.getPayload(),
+                        incoming.getHlcTimestamp(), incoming.getDeviceId());
+                allConflictReasons.addAll(result.conflictReasons());
             }
 
             changeEventRepository.save(incoming);
@@ -62,6 +71,6 @@ public class SyncService {
         }
 
         HLCTimestamp checkpoint = clock.tick();
-        return new SyncPushResponse(accepted, conflicted, checkpoint.toString());
+        return new SyncPushResponse(accepted, allConflictReasons, checkpoint.toString());
     }
 }
