@@ -55,8 +55,11 @@ public class ConflictResolutionService {
             }
 
             FieldState current = existing.get();
-            MergeInput input = new MergeInput(fieldName, current.getFieldValue(), current.getLastWriteHlc(),
-                    incomingValue, incomingHlc);
+            MergeInput input = new MergeInput(
+                    fieldName,
+                    current.getFieldValue(), current.getLastWriteHlc(), current.getLastWriteDeviceId(),
+                    incomingValue, incomingHlc, deviceId
+            );
 
             MergeOutcome outcome = strategyRegistry.strategyFor(fieldName).merge(input);
 
