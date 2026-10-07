@@ -1,11 +1,10 @@
 package com.balaji.sync_engine.entity;
 
 import jakarta.persistence.*;
-
-
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.data.domain.Persistable;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -15,10 +14,9 @@ import java.util.UUID;
 @Getter
 @Setter
 @NoArgsConstructor
-public class PatientRecord {
+public class PatientRecord implements Persistable<UUID> {
 
     @Id
-    @GeneratedValue
     private UUID id;
 
     @Column(nullable = false)
@@ -35,6 +33,9 @@ public class PatientRecord {
 
     private Instant updatedAt;
 
+    @Transient
+    private boolean isNew = true;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = Instant.now();
@@ -44,5 +45,16 @@ public class PatientRecord {
     @PreUpdate
     protected void onUpdate() {
         this.updatedAt = Instant.now();
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @PostPersist
+    @PostLoad
+    void markNotNew() {
+        this.isNew = false;
     }
 }

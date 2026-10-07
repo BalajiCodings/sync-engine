@@ -38,11 +38,14 @@ public class PatientRecordService {
 
     @Transactional
     public PatientRecord create(PatientRecord record) {
+        if (record.getId() == null) {
+            record.setId(UUID.randomUUID());
+        }
         PatientRecord saved = patientRepository.save(record);
         logChange(saved.getId(), ChangeType.CREATE, saved);
         return saved;
     }
-
+    
     public List<PatientRecord> findAll() {
         return patientRepository.findAll();
     }
