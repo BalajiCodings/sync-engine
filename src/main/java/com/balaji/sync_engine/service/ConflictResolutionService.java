@@ -44,7 +44,7 @@ public class ConflictResolutionService {
                 return; // not conflict-tracked fields
             }
 
-            String incomingValue = valueNode.isNull() ? null : valueNode.asText();
+            String incomingValue = valueNode.isNull() ? null : valueNode.asString();
 
             Optional<FieldState> existing = fieldStateRepository
                     .findByEntityTypeAndEntityIdAndFieldName(entityType, entityId, fieldName);
