@@ -35,6 +35,13 @@ public class PatientRecord implements Persistable<UUID> {
 
     @Transient
     private boolean isNew = true;
+    
+ // Add to PatientRecord.java
+    private Instant deletedAt;
+
+    public boolean isDeleted() {
+        return deletedAt != null;
+    }
 
     @PrePersist
     protected void onCreate() {
