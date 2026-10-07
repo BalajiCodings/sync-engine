@@ -58,4 +58,12 @@ public class PatientRecordProjector {
             default -> { /* unmapped field — ignored for now */ }
         }
     }
+    
+    @Transactional
+    public void markDeleted(UUID entityId) {
+        patientRepository.findById(entityId).ifPresent(record -> {
+            record.setDeletedAt(java.time.Instant.now());
+            patientRepository.save(record);
+        });
+    }
 }

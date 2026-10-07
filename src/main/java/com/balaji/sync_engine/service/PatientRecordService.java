@@ -70,7 +70,8 @@ public class PatientRecordService {
     @Transactional
     public void delete(UUID id) {
         PatientRecord existing = findById(id);
-        patientRepository.deleteById(id);
+        existing.setDeletedAt(java.time.Instant.now());
+        patientRepository.save(existing);
         logChange(id, ChangeType.DELETE, existing);
     }
 
