@@ -4,6 +4,7 @@ import com.balaji.sync_engine.entity.PatientRecord;
 import com.balaji.sync_engine.service.PatientRecordService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.util.List;
 import java.util.UUID;
@@ -19,12 +20,14 @@ public class PatientRecordController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('FIELD_WORKER', 'SUPERVISOR', 'ADMIN')")
     public ResponseEntity<PatientRecord> create(@RequestBody PatientRecord record) {
         PatientRecord saved = service.create(record);
         return ResponseEntity.status(201).body(saved);
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('FIELD_WORKER', 'SUPERVISOR', 'ADMIN')")
     public ResponseEntity<List<PatientRecord>> findAll() {
         return ResponseEntity.ok(service.findAll());
     }
@@ -40,6 +43,7 @@ public class PatientRecordController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('FIELD_WORKER', 'SUPERVISOR', 'ADMIN')")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         service.delete(id);
         return ResponseEntity.noContent().build();
