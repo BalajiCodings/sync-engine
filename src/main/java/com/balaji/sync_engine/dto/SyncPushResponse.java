@@ -4,6 +4,7 @@ import java.util.List;
 
 public record SyncPushResponse(
         int acceptedCount,
-        List<String> conflictedEventIds,
+        List<ConflictInfo> conflicts,
+        List<RejectedEvent> rejectedEvents,
         String newCheckpointHlc
 ) {}
