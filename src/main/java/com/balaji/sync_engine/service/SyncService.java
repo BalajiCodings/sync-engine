@@ -22,11 +22,13 @@ public class SyncService {
     private final ChangeEventRepository changeEventRepository;
     private final HybridLogicalClock clock;
     private final ConflictResolutionService conflictResolutionService;
+    private final PatientRecordProjector projector;
 
-    public SyncService(ChangeEventRepository changeEventRepository, HybridLogicalClock clock, ConflictResolutionService conflictResolutionService) {
+    public SyncService(ChangeEventRepository changeEventRepository, HybridLogicalClock clock, ConflictResolutionService conflictResolutionService, PatientRecordProjector projector) {
         this.changeEventRepository = changeEventRepository;
         this.clock = clock;
         this.conflictResolutionService = conflictResolutionService;
+        this.projector = projector;
     }
 
     public SyncPullResponse pull(SyncPullRequest request) {
@@ -59,11 +61,14 @@ public class SyncService {
                 continue;
             }
 
-            if (incoming.getChangeType() != ChangeType.DELETE) {
+            if (incoming.getChangeType() == ChangeType.DELETE) {
+                projector.remove(incoming.getEntityId());
+            } else {
                 ConflictResolutionService.ApplyResult result = conflictResolutionService.applyIncomingChange(
                         incoming.getEntityType(), incoming.getEntityId(), incoming.getPayload(),
                         incoming.getHlcTimestamp(), incoming.getDeviceId());
                 allConflictReasons.addAll(result.conflictReasons());
+                projector.project(incoming.getEntityId());
             }
 
             changeEventRepository.save(incoming);
