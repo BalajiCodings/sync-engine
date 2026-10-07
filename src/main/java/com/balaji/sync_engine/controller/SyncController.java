@@ -6,6 +6,11 @@ import com.balaji.sync_engine.dto.SyncPullResponse;
 import com.balaji.sync_engine.dto.SyncPushRequest;
 import com.balaji.sync_engine.dto.SyncPushResponse;
 import com.balaji.sync_engine.service.SyncService;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,6 +23,7 @@ import com.balaji.sync_engine.security.User;
 import com.balaji.sync_engine.security.Role;
 import com.balaji.sync_engine.security.UserRepository;
 
+@Tag(name = "Sync", description = "Delta sync push/pull for offline-first devices")
 @RestController
 @RequestMapping("/api/sync")
 public class SyncController {
@@ -30,13 +36,28 @@ public class SyncController {
         this.userRepository = userRepository;
     }
 
-    @PostMapping("/pull")
+    @Operation(summary = "Pull changes since a checkpoint",
+            description = "Pass lastSyncedHlc as null for a first-time device sync "
+                    + "(returns full history); otherwise only events after that "
+                    + "checkpoint are returned.")
+	 @PostMapping("/pull")
+	 @PreAuthorize("hasAnyRole('FIELD_WORKER', 'SUPERVISOR', 'ADMIN')")
     public ResponseEntity<SyncPullResponse> pull(@RequestBody SyncPullRequest request) {
         return ResponseEntity.ok(syncService.pull(request));
     }
 
-    @PostMapping("/push")
-    @PreAuthorize("hasAnyRole('FIELD_WORKER', 'SUPERVISOR', 'ADMIN')")
+    @Operation(summary = "Push a batch of offline changes",
+            description = "Each event is processed independently -- one malformed event "
+                    + "does not roll back the rest of the batch. FIELD_WORKER accounts "
+                    + "must push under their own bound deviceId; a mismatch returns 403. "
+                    + "Max 200 events per request.")
+	 @ApiResponse(responseCode = "200", description = "Processed (see response body for "
+	         + "per-event acceptance, conflicts, and rejections)")
+	 @ApiResponse(responseCode = "400", description = "Batch exceeds the 200-event limit")
+	 @ApiResponse(responseCode = "403", description = "Claimed deviceId does not match the "
+	         + "authenticated account's bound device")
+	 @PostMapping("/push")
+	 @PreAuthorize("hasAnyRole('FIELD_WORKER', 'SUPERVISOR', 'ADMIN')")
     public ResponseEntity<SyncPushResponse> push(@RequestBody SyncPushRequest request,
                                                   Authentication authentication) {
         String authenticatedUsername = authentication.getName();
