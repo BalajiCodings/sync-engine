@@ -5,6 +5,11 @@ import com.balaji.sync_engine.clock.HybridLogicalClock;
 import com.balaji.sync_engine.dto.*;
 import com.balaji.sync_engine.entity.ChangeEvent;
 import com.balaji.sync_engine.repository.ChangeEventRepository;
+
+import io.swagger.v3.oas.annotations.Operation;
+
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -27,17 +32,42 @@ public class SyncService {
         this.eventProcessor = eventProcessor;
     }
 
+    private static final int DEFAULT_PULL_LIMIT = 500;
+    private static final int MAX_PULL_LIMIT = 1000;
+
+    @Operation(summary = "irrelevant here, controller-level only") // (just a reminder -- annotation stays on controller, not service)
     public SyncPullResponse pull(SyncPullRequest request) {
+        int limit = resolveLimit(request.limit());
+        // Fetch one extra beyond the limit, purely to detect whether more data
+        // remains, without a separate COUNT query.
+        Pageable pageable = PageRequest.of(0, limit + 1);
+
         List<ChangeEvent> changes;
         if (request.lastSyncedHlc() == null || request.lastSyncedHlc().isBlank()) {
-            changes = changeEventRepository.findAllByOrderByServerReceivedAtAsc();
+            changes = changeEventRepository.findAllByOrderByServerReceivedAtAsc(pageable);
         } else {
             changes = changeEventRepository
-                    .findByHlcTimestampGreaterThanOrderByHlcTimestampAsc(request.lastSyncedHlc());
+                    .findByHlcTimestampGreaterThanOrderByHlcTimestampAsc(request.lastSyncedHlc(), pageable);
         }
-        HLCTimestamp checkpoint = clock.tick();
-        return new SyncPullResponse(changes, checkpoint.toString());
+
+        boolean hasMore = changes.size() > limit;
+        if (hasMore) {
+            changes = changes.subList(0, limit);
+        }
+
+        String checkpoint = hasMore
+                ? changes.get(changes.size() - 1).getHlcTimestamp()
+                : clock.tick().toString();
+
+        return new SyncPullResponse(changes, checkpoint, hasMore);
     }
+
+	    private int resolveLimit(Integer requested) {
+	        if (requested == null) {
+	            return DEFAULT_PULL_LIMIT;
+	        }
+	        return Math.min(Math.max(requested, 1), MAX_PULL_LIMIT);
+	    }
 
     public SyncPushResponse push(SyncPushRequest request) {
         if (request.changes().size() > MAX_BATCH_SIZE) {

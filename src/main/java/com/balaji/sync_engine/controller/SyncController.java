@@ -37,14 +37,15 @@ public class SyncController {
     }
 
     @Operation(summary = "Pull changes since a checkpoint",
-            description = "Pass lastSyncedHlc as null for a first-time device sync "
-                    + "(returns full history); otherwise only events after that "
-                    + "checkpoint are returned.")
+            description = "Pass lastSyncedHlc as null for a first-time sync. Responses are "
+                    + "capped at `limit` (default 500, max 1000) events; when hasMore is true, "
+                    + "call pull again immediately using the returned newCheckpointHlc to "
+                    + "continue -- do not treat a capped response as 'fully synced'.")
 	 @PostMapping("/pull")
 	 @PreAuthorize("hasAnyRole('FIELD_WORKER', 'SUPERVISOR', 'ADMIN')")
-    public ResponseEntity<SyncPullResponse> pull(@RequestBody SyncPullRequest request) {
-        return ResponseEntity.ok(syncService.pull(request));
-    }
+	 public ResponseEntity<SyncPullResponse> pull(@RequestBody SyncPullRequest request) {
+	    	return ResponseEntity.ok(syncService.pull(request));
+	 }
 
     @Operation(summary = "Push a batch of offline changes",
             description = "Each event is processed independently -- one malformed event "
