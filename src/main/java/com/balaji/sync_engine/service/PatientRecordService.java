@@ -2,9 +2,14 @@ package com.balaji.sync_engine.service;
 
 import com.balaji.sync_engine.clock.HybridLogicalClock;
 
+
 import com.balaji.sync_engine.entity.ChangeEvent;
 import com.balaji.sync_engine.entity.ChangeType;
 import com.balaji.sync_engine.entity.PatientRecord;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+
 import com.balaji.sync_engine.repository.ChangeEventRepository;
 import com.balaji.sync_engine.repository.PatientRecordRepository;
 import org.springframework.stereotype.Service;
@@ -73,6 +78,11 @@ public class PatientRecordService {
         existing.setDeletedAt(java.time.Instant.now());
         patientRepository.save(existing);
         logChange(id, ChangeType.DELETE, existing);
+    }
+    
+ // PatientRecordService.java
+    public Page<PatientRecord> findAll(Pageable pageable) {
+        return patientRepository.findAllByDeletedAtIsNull(pageable);
     }
 
     private void logChange(UUID entityId, ChangeType changeType, PatientRecord record) {

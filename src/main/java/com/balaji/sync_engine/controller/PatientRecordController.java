@@ -2,17 +2,19 @@ package com.balaji.sync_engine.controller;
 
 import com.balaji.sync_engine.entity.PatientRecord;
 
+
 import com.balaji.sync_engine.service.PatientRecordService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 
-import java.util.List;
 import java.util.UUID;
 
 @Tag(name = "Patient Records", description = "Direct CRUD for patient records (REST path)")
@@ -34,17 +36,20 @@ public class PatientRecordController {
         return ResponseEntity.status(201).body(saved);
     }
 
-    @Operation(summary = "List all non-deleted patient records")
+ // PatientRecordController.java
+    @Operation(summary = "List non-deleted patient records (paginated)")
     @GetMapping
     @PreAuthorize("hasAnyRole('FIELD_WORKER', 'SUPERVISOR', 'ADMIN')")
-    public ResponseEntity<List<PatientRecord>> findAll() {
-        return ResponseEntity.ok(service.findAll());
+    public ResponseEntity<Page<PatientRecord>> findAll(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(service.findAll(PageRequest.of(page, size)));
     }
 
     @Operation(summary = "Get a single patient by ID",
             description = "Returns the record even if soft-deleted, unlike findAll().")
- @GetMapping("/{id}")
- @PreAuthorize("hasAnyRole('FIELD_WORKER', 'SUPERVISOR', 'ADMIN')")
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('FIELD_WORKER', 'SUPERVISOR', 'ADMIN')")
     public ResponseEntity<PatientRecord> findById(@PathVariable UUID id) {
         return ResponseEntity.ok(service.findById(id));
     }
