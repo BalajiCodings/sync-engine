@@ -6,6 +6,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.springframework.data.domain.Persistable;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.time.Instant;
 import java.util.UUID;
 
@@ -39,9 +41,6 @@ public class PatientRecord implements Persistable<UUID> {
  // Add to PatientRecord.java
     private Instant deletedAt;
 
-    public boolean isDeleted() {
-        return deletedAt != null;
-    }
 
     @PrePersist
     protected void onCreate() {
@@ -54,9 +53,15 @@ public class PatientRecord implements Persistable<UUID> {
         this.updatedAt = Instant.now();
     }
 
+    @JsonIgnore
     @Override
     public boolean isNew() {
         return isNew;
+    }
+
+    @JsonIgnore
+    public boolean isDeleted() {
+        return deletedAt != null;
     }
 
     @PostPersist

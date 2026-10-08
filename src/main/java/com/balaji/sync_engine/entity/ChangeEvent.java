@@ -8,6 +8,8 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import org.springframework.data.domain.Persistable;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.time.Instant;
 import java.util.UUID;
 
@@ -52,11 +54,13 @@ public class ChangeEvent implements Persistable<UUID> {
         this.serverReceivedAt = Instant.now();
     }
 
+    @JsonIgnore
     @Override
     public UUID getId() {
         return eventId;
     }
 
+    @JsonIgnore
     @Override
     public boolean isNew() {
         return isNew;
