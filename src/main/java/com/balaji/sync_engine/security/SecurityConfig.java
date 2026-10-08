@@ -26,10 +26,14 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final AppUserDetailsService userDetailsService;
+    private final ApiSecurityErrorHandler apiSecurityErrorHandler;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter, AppUserDetailsService userDetailsService) {
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter,
+                          AppUserDetailsService userDetailsService,
+                          ApiSecurityErrorHandler apiSecurityErrorHandler) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.userDetailsService = userDetailsService;
+        this.apiSecurityErrorHandler = apiSecurityErrorHandler;
     }
 
     @Bean
@@ -60,6 +64,9 @@ public class SecurityConfig {
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                 .anyRequest().authenticated()
             )
+            .exceptionHandling(ex -> ex
+                    .authenticationEntryPoint(apiSecurityErrorHandler)
+                    .accessDeniedHandler(apiSecurityErrorHandler))
             .authenticationProvider(authenticationProvider())
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
