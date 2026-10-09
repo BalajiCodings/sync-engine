@@ -19,15 +19,18 @@ public class SyncEventProcessor {
     private final ConflictResolutionService conflictResolutionService;
     private final DeletionResolutionService deletionResolutionService;
     private final PatientRecordProjector projector;
+    private final ConflictReviewService conflictReviewService;
 
     public SyncEventProcessor(ChangeEventRepository changeEventRepository,
-                               ConflictResolutionService conflictResolutionService,
-                               DeletionResolutionService deletionResolutionService,
-                               PatientRecordProjector projector) {
+                              ConflictResolutionService conflictResolutionService,
+                              DeletionResolutionService deletionResolutionService,
+                              PatientRecordProjector projector,
+                              ConflictReviewService conflictReviewService) {
         this.changeEventRepository = changeEventRepository;
         this.conflictResolutionService = conflictResolutionService;
         this.deletionResolutionService = deletionResolutionService;
         this.projector = projector;
+        this.conflictReviewService = conflictReviewService;
     }
 
     public sealed interface EventOutcome permits Skipped, Applied {}
@@ -56,10 +59,9 @@ public class SyncEventProcessor {
                 conflicts.add(new ConflictInfo(
                         ConflictType.DELETE_UPDATE_CONFLICT, incoming.getEntityType(), incoming.getEntityId(),
                         incoming.getEventId(), null, null, null, null,
-                        incoming.getDeviceId(), deletionCheck.reason()
-                ));
+                        incoming.getDeviceId(), deletionCheck.reason()));
                 changeEventRepository.save(incoming);
-                return new Applied(conflicts);
+                return new Applied(conflictReviewService.recordDetected(conflicts));   // <-- changed
             }
 
             ConflictResolutionService.ApplyResult result = conflictResolutionService.applyIncomingChange(
@@ -70,6 +72,6 @@ public class SyncEventProcessor {
         }
 
         changeEventRepository.save(incoming);
-        return new Applied(conflicts);
+        return new Applied(conflictReviewService.recordDetected(conflicts));           // <-- changed
     }
 }
