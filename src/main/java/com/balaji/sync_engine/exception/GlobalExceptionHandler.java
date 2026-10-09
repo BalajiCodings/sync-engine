@@ -5,6 +5,7 @@ import com.balaji.sync_engine.dto.ErrorCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.*;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -59,5 +60,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private ResponseEntity<ApiResult<Void>> build(HttpStatus status, String message) {
         ApiResult<Void> envelope = ApiResult.failure(ErrorCode.fromStatus(status.value()), message);
         return ResponseEntity.status(status).body(envelope);
+    }
+    
+    @ExceptionHandler(ConflictAlreadyResolvedException.class)
+    public ResponseEntity<ApiResult<Void>> handleAlreadyResolved(ConflictAlreadyResolvedException ex) {
+        return build(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResult<Void>> handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {
+        return build(HttpStatus.CONFLICT,
+                "This record was modified by someone else at the same time. Reload and try again.");
     }
 }

@@ -16,6 +16,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -32,6 +33,11 @@ public class ConflictResolutionService {
         this.strategyRegistry = strategyRegistry;
         this.jsonMapper = jsonMapper;
     }
+    private static final Set<String> UNTRACKED_FIELDS = Set.of("id", "createdAt", "updatedAt", "deletedAt");
+
+    private boolean isTrackedField(String fieldName) {
+        return !UNTRACKED_FIELDS.contains(fieldName);
+    }
 
     public record ApplyResult(List<ConflictInfo> conflicts) {}
 
@@ -44,7 +50,7 @@ public class ConflictResolutionService {
             String fieldName = entry.getKey();
             JsonNode valueNode = entry.getValue();
 
-            if (fieldName.equals("id") || fieldName.equals("createdAt") || fieldName.equals("updatedAt")) {
+            if (!isTrackedField(fieldName)) {
                 return;
             }
 
@@ -83,6 +89,7 @@ public class ConflictResolutionService {
         return new ApplyResult(conflicts);
     }
 
+
     private void saveFieldState(String entityType, UUID entityId, String fieldName,
                                  String value, String hlc, String deviceId) {
         FieldState state = new FieldState();
@@ -93,5 +100,33 @@ public class ConflictResolutionService {
         state.setLastWriteHlc(hlc);
         state.setLastWriteDeviceId(deviceId);
         fieldStateRepository.save(state);
+    }
+    /** Writes field state unconditionally, with no merge strategy. Used for human-made decisions. */
+    public void applyAuthoritative(String entityType, UUID entityId, String payloadJson,
+                                   String hlc, String deviceId) {
+        JsonNode payload = jsonMapper.readTree(payloadJson);
+
+        payload.properties().forEach(entry -> {
+            String fieldName = entry.getKey();
+            if (!isTrackedField(fieldName)) {
+                return;
+            }
+            JsonNode valueNode = entry.getValue();
+            String value = valueNode.isNull() ? null : valueNode.asString();
+
+            Optional<FieldState> existing = fieldStateRepository
+                    .findByEntityTypeAndEntityIdAndFieldName(entityType, entityId, fieldName);
+
+            if (existing.isEmpty()) {
+                saveFieldState(entityType, entityId, fieldName, value, hlc, deviceId);
+                return;
+            }
+
+            FieldState state = existing.get();
+            state.setFieldValue(value);
+            state.setLastWriteHlc(hlc);
+            state.setLastWriteDeviceId(deviceId);
+            fieldStateRepository.save(state);
+        });
     }
 }

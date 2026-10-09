@@ -60,6 +60,15 @@ public class PatientRecordProjector {
     }
     
     @Transactional
+    public void restore(UUID entityId) {
+        patientRepository.findById(entityId).ifPresent(record -> {
+            record.setDeletedAt(null);
+            patientRepository.save(record);
+        });
+        project(entityId);
+    }
+    
+    @Transactional
     public void markDeleted(UUID entityId) {
         patientRepository.findById(entityId).ifPresent(record -> {
             record.setDeletedAt(java.time.Instant.now());
