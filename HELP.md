@@ -32,3 +32,22 @@ While most of the inheritance is fine, it also inherits unwanted elements like `
 To prevent this, the project POM contains empty overrides for these elements.
 If you manually switch to a different parent and actually want the inheritance, you need to remove those overrides.
 
+# ADR 0002: Pull cursor is the server's ingestion sequence
+
+**Status:** Accepted
+
+**Context:** Pull originally used the event's own HLC as the cursor. Offline
+devices push events older than checkpoints other devices already moved past,
+so those events were never delivered. Pagination also mixed two orderings.
+
+**Decision:** change_event.server_seq (bigserial) is the cursor. Appends are
+serialized by a Postgres transaction-scoped advisory lock, so sequence order
+equals commit order and a reader can never see a higher number before a lower
+one. HLC remains the tool for "which write is later"; the sequence answers
+"what has this device not received yet".
+
+**Consequences:** Delivery is gapless and ordered. Appends are single-lane,
+which is fine at this scale. Gaps in the numbering (rolled-back transactions)
+are harmless. Scaling past one lane would need a transaction-horizon cursor
+or a log broker. A brand-new device still replays full history (snapshot sync
+is a known limitation).
