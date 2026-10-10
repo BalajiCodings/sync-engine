@@ -4,6 +4,7 @@ import com.balaji.sync_engine.conflict.MergeInput;
 
 import com.balaji.sync_engine.conflict.MergeOutcome;
 import com.balaji.sync_engine.dto.ConflictInfo;
+import com.balaji.sync_engine.clock.HLCTimestamp;
 import com.balaji.sync_engine.conflict.ConflictType;
 import com.balaji.sync_engine.conflict.MergeStrategyRegistry;
 import com.balaji.sync_engine.entity.FieldState;
@@ -81,8 +82,12 @@ public class ConflictResolutionService {
             }
 
             current.setFieldValue(outcome.resolvedValue());
-            current.setLastWriteHlc(incomingHlc);
-            current.setLastWriteDeviceId(deviceId);
+            // Provenance only moves forward: a losing (older) write must never rewind it.
+            if (HLCTimestamp.parse(incomingHlc).compareTo(HLCTimestamp.parse(current.getLastWriteHlc())) > 0) {
+                current.setLastWriteHlc(incomingHlc);
+                current.setLastWriteDeviceId(deviceId);
+            }
+            fieldStateRepository.save(current);
             fieldStateRepository.save(current);
         });
 
