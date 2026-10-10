@@ -8,8 +8,11 @@ import java.util.List;
 
 public record SyncPullResponse(
         List<ChangeEvent> changes,
-        String newCheckpointHlc,
-        @Schema(description = "True if more changes remain beyond this response -- "
-                + "call pull again immediately with the returned checkpoint")
-        boolean hasMore
+        @Schema(description = "Send this back as cursor on the next pull.")
+        long nextCursor,
+        @Schema(description = "True if more changes remain. Pull again immediately.")
+        boolean hasMore,
+        @Schema(description = "Server's hybrid logical clock. Devices fold it into their own clock. "
+                + "NOT a pull position.")
+        String serverHlc
 ) {}

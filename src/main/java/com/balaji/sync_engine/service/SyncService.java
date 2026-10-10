@@ -35,33 +35,23 @@ public class SyncService {
     private static final int DEFAULT_PULL_LIMIT = 500;
     private static final int MAX_PULL_LIMIT = 1000;
 
-    @Operation(summary = "irrelevant here, controller-level only") // (just a reminder -- annotation stays on controller, not service)
     public SyncPullResponse pull(SyncPullRequest request) {
         int limit = resolveLimit(request.limit());
-        // Fetch one extra beyond the limit, purely to detect whether more data
-        // remains, without a separate COUNT query.
-        Pageable pageable = PageRequest.of(0, limit + 1);
-
-        List<ChangeEvent> changes;
-        if (request.lastSyncedHlc() == null || request.lastSyncedHlc().isBlank()) {
-            changes = changeEventRepository.findAllByOrderByServerReceivedAtAsc(pageable);
-        } else {
-            changes = changeEventRepository
-                    .findByHlcTimestampGreaterThanOrderByHlcTimestampAsc(request.lastSyncedHlc(), pageable);
+        long cursor = request.cursor() == null ? 0L : request.cursor();
+        if (cursor < 0) {
+            throw new IllegalArgumentException("cursor must not be negative");
         }
 
-        boolean hasMore = changes.size() > limit;
-        if (hasMore) {
-            changes = changes.subList(0, limit);
-        }
+        // Fetch one extra row only to learn whether more remain, without a COUNT query.
+        List<ChangeEvent> batch = changeEventRepository
+                .findByServerSeqGreaterThanOrderByServerSeqAsc(cursor, PageRequest.of(0, limit + 1));
 
-        String checkpoint = hasMore
-                ? changes.get(changes.size() - 1).getHlcTimestamp()
-                : clock.tick().toString();
+        boolean hasMore = batch.size() > limit;
+        List<ChangeEvent> changes = hasMore ? new ArrayList<>(batch.subList(0, limit)) : batch;
 
-        return new SyncPullResponse(changes, checkpoint, hasMore);
+        long nextCursor = changes.isEmpty() ? cursor : changes.get(changes.size() - 1).getServerSeq();
+        return new SyncPullResponse(changes, nextCursor, hasMore, clock.tick().toString());
     }
-
 	    private int resolveLimit(Integer requested) {
 	        if (requested == null) {
 	            return DEFAULT_PULL_LIMIT;

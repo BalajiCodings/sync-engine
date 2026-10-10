@@ -39,10 +39,12 @@ public class SyncController {
         this.userRepository = userRepository;
     }
 
-    @Operation(summary = "Pull changes since a checkpoint",
-               description = "Pass lastSyncedHlc as null for a first-time sync. Responses are capped at `limit` "
-                       + "(default 500, max 1000) events; when hasMore is true, call pull again immediately "
-                       + "with the returned newCheckpointHlc. Do not treat a capped response as fully synced.")
+    @Operation(summary = "Pull changes since a cursor",
+            description = "Send cursor=null on a device's first sync, then send back nextCursor from the "
+                    + "previous response. Capped at `limit` (default 500, max 1000); when hasMore is true, "
+                    + "pull again immediately. The cursor is a position in the server's arrival order, so "
+                    + "events that reach the server late from offline devices are always delivered, whatever "
+                    + "their timestamps. serverHlc is for clock synchronization only.")
     @PostMapping("/pull")
     @PreAuthorize("hasAnyRole('FIELD_WORKER', 'SUPERVISOR', 'ADMIN')")
     public ResponseEntity<ApiResult<SyncPullResponse>> pull(@RequestBody SyncPullRequest request) {

@@ -1,7 +1,6 @@
 package com.balaji.sync_engine.repository;
 
 import com.balaji.sync_engine.entity.ChangeEvent;
-
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -12,6 +11,5 @@ public interface ChangeEventRepository extends JpaRepository<ChangeEvent, UUID> 
 
     List<ChangeEvent> findByEntityTypeAndEntityIdOrderByHlcTimestampAsc(String entityType, UUID entityId);
 
-    List<ChangeEvent> findByHlcTimestampGreaterThanOrderByHlcTimestampAsc(String hlcTimestamp, Pageable pageable);
-    List<ChangeEvent> findAllByOrderByServerReceivedAtAsc(Pageable pageable);
+    List<ChangeEvent> findByServerSeqGreaterThanOrderByServerSeqAsc(long serverSeq, Pageable pageable);
 }
