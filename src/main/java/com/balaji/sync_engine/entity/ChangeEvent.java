@@ -9,12 +9,15 @@ import org.hibernate.type.SqlTypes;
 import org.springframework.data.domain.Persistable;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "change_event")
+@Table(name = "change_event", indexes = {
+        @Index(name = "idx_change_event_server_seq", columnList = "server_seq", unique = true)
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -45,6 +48,11 @@ public class ChangeEvent implements Persistable<UUID> {
 
     @Column(nullable = false, updatable = false)
     private Instant serverReceivedAt;
+    
+    /** Position in the server's event log. Assigned by Postgres at insert time. This is the pull cursor. */
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    @Column(name = "server_seq", insertable = false, updatable = false, columnDefinition = "bigserial")
+    private Long serverSeq;
 
     @Transient
     private boolean isNew = true;
