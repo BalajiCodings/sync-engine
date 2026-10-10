@@ -30,19 +30,23 @@ public class PatientRecordService {
     private final ChangeEventRepository changeEventRepository;
     private final JsonMapper jsonMapper;
     private final HybridLogicalClock clock;
+    private final IngestionLock ingestionLock;
 
     public PatientRecordService(PatientRecordRepository patientRepository,
                                  ChangeEventRepository changeEventRepository,
                                  JsonMapper jsonMapper,
-                                 HybridLogicalClock clock) {
+                                 HybridLogicalClock clock, IngestionLock ingestionLock) {
         this.patientRepository = patientRepository;
         this.changeEventRepository = changeEventRepository;
         this.jsonMapper = jsonMapper;
         this.clock = clock;
+        this.ingestionLock = ingestionLock;
     }
 
     @Transactional
     public PatientRecord create(PatientRecord record) {
+    	ingestionLock.acquire(); 
+    	
         if (record.getId() == null) {
             record.setId(UUID.randomUUID());
         }
@@ -62,6 +66,7 @@ public class PatientRecordService {
 
     @Transactional
     public PatientRecord update(UUID id, PatientRecord updated) {
+    	ingestionLock.acquire(); 
         PatientRecord existing = findById(id);
         existing.setPatientName(updated.getPatientName());
         existing.setWeight(updated.getWeight());
@@ -74,6 +79,7 @@ public class PatientRecordService {
 
     @Transactional
     public void delete(UUID id) {
+    	ingestionLock.acquire(); 
         PatientRecord existing = findById(id);
         existing.setDeletedAt(java.time.Instant.now());
         patientRepository.save(existing);

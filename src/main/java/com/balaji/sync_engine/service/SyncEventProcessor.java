@@ -20,17 +20,19 @@ public class SyncEventProcessor {
     private final DeletionResolutionService deletionResolutionService;
     private final PatientRecordProjector projector;
     private final ConflictReviewService conflictReviewService;
+    private final IngestionLock ingestionLock;
 
     public SyncEventProcessor(ChangeEventRepository changeEventRepository,
                               ConflictResolutionService conflictResolutionService,
                               DeletionResolutionService deletionResolutionService,
                               PatientRecordProjector projector,
-                              ConflictReviewService conflictReviewService) {
+                              ConflictReviewService conflictReviewService, IngestionLock ingestionLock) {
         this.changeEventRepository = changeEventRepository;
         this.conflictResolutionService = conflictResolutionService;
         this.deletionResolutionService = deletionResolutionService;
         this.projector = projector;
         this.conflictReviewService = conflictReviewService;
+        this.ingestionLock = ingestionLock;
     }
 
     public sealed interface EventOutcome permits Skipped, Applied {}
@@ -39,6 +41,8 @@ public class SyncEventProcessor {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public EventOutcome processEvent(ChangeEvent incoming) {
+    	ingestionLock.acquire(); 
+    	
         if (changeEventRepository.existsById(incoming.getEventId())) {
             return new Skipped();
         }

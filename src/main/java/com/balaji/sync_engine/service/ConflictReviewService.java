@@ -30,6 +30,7 @@ public class ConflictReviewService {
     private final PatientRecordProjector projector;
     private final HybridLogicalClock clock;
     private final JsonMapper jsonMapper;
+    private final IngestionLock ingestionLock;
 
     public ConflictReviewService(ConflictRecordRepository conflictRepository,
                                  FieldStateRepository fieldStateRepository,
@@ -38,7 +39,7 @@ public class ConflictReviewService {
                                  ConflictResolutionService conflictResolutionService,
                                  PatientRecordProjector projector,
                                  HybridLogicalClock clock,
-                                 JsonMapper jsonMapper) {
+                                 JsonMapper jsonMapper, IngestionLock ingestionLock) {
         this.conflictRepository = conflictRepository;
         this.fieldStateRepository = fieldStateRepository;
         this.deletionStateRepository = deletionStateRepository;
@@ -47,6 +48,7 @@ public class ConflictReviewService {
         this.projector = projector;
         this.clock = clock;
         this.jsonMapper = jsonMapper;
+        this.ingestionLock = ingestionLock;
     }
 
     /** Persists detected conflicts; joins the caller's transaction so case and event commit together. */
@@ -85,6 +87,7 @@ public class ConflictReviewService {
 
     @Transactional
     public ConflictRecord resolve(UUID id, ResolveConflictRequest request, String resolvedBy) {
+    	ingestionLock.acquire(); 
         ConflictRecord conflict = load(id);
         if (conflict.getStatus() == ConflictStatus.RESOLVED) {
             throw new ConflictAlreadyResolvedException(id);
