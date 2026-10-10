@@ -59,14 +59,22 @@ public class SyncController {
     @PostMapping("/push")
     @PreAuthorize("hasAnyRole('FIELD_WORKER', 'SUPERVISOR', 'ADMIN')")
     public ResponseEntity<ApiResult<SyncPushResponse>> push(@RequestBody SyncPushRequest request,
-                                                            Authentication authentication) {
-        User user = userRepository.findByUsername(authentication.getName()).orElseThrow();
-
-        if (user.getRole() == Role.FIELD_WORKER && !request.deviceId().equals(user.getDeviceId())) {
-            throw new AccessDeniedException(
-                    "Authenticated device identity does not match claimed deviceId in request");
-        }
-
-        return ResponseEntity.ok(ApiResult.ok(syncService.push(request)));
-    }
+		            Authentication authentication) {
+		if (request.changes() == null) {
+		throw new IllegalArgumentException("changes is required");
+		}
+		User user = userRepository.findByUsername(authentication.getName()).orElseThrow();
+		
+		if (user.getRole() == Role.FIELD_WORKER) {
+				String boundDevice = user.getDeviceId();
+				boolean spoofed = !boundDevice.equals(request.deviceId())
+				|| request.changes().stream().anyMatch(c -> !boundDevice.equals(c.getDeviceId()));
+				if (spoofed) {
+					throw new AccessDeniedException(
+					"Every event must be pushed under the authenticated account's own deviceId");
+			}
+		}
+		
+		return ResponseEntity.ok(ApiResult.ok(syncService.push(request)));
+		}
 }
