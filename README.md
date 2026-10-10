@@ -324,6 +324,27 @@ mvn spring-boot:run
 
 ---
 
+
+# ADR 0001: PN-Counter CRDT for dosesAdministered
+
+**Status:** Accepted
+
+**Context:** Two offline devices can each record doses for the same patient.
+Last-write-wins would silently discard one device's doses; manual review is
+absurd for a count.
+
+**Decision:** Model the field as a state-based PN-Counter (per-device
+increment/decrement maps, merged by per-device maximum). The server accepts
+only a device's own entry. Counters change only via sync, never via REST.
+
+**Consequences:** Concurrent updates can never conflict and merging is
+idempotent. State grows with the number of distinct devices (see the
+vector-clock ADR). A device that loses its local state must resume from its
+last server-known entry, or its new increments are absorbed by max-merge.
+Text CRDTs (RGA) were considered for free-text fields and scoped out:
+multi-week effort, not justified for this project.
+
+
 ## Author
 
 [Your Name] — backend developer in transition, building this project to

@@ -55,13 +55,15 @@ public class ConflictResolutionService {
                 return;
             }
 
-            String incomingValue = valueNode.isNull() ? null : valueNode.asString();
+            String incomingValue = toStoredValue(valueNode);
 
             Optional<FieldState> existing = fieldStateRepository
                     .findByEntityTypeAndEntityIdAndFieldName(entityType, entityId, fieldName);
 
             if (existing.isEmpty()) {
-                saveFieldState(entityType, entityId, fieldName, incomingValue, incomingHlc, deviceId);
+                String initial = strategyRegistry.strategyFor(fieldName)
+                        .onFirstWrite(fieldName, incomingValue, deviceId);
+                saveFieldState(entityType, entityId, fieldName, initial, incomingHlc, deviceId);
                 return;
             }
 
@@ -92,6 +94,16 @@ public class ConflictResolutionService {
         });
 
         return new ApplyResult(conflicts);
+    }
+    
+    private String toStoredValue(JsonNode valueNode) {
+        if (valueNode.isNull()) {
+            return null;
+        }
+        if (valueNode.isObject() || valueNode.isArray()) {
+            return jsonMapper.writeValueAsString(valueNode);   // structured values are stored as JSON text
+        }
+        return valueNode.asString();
     }
 
 
