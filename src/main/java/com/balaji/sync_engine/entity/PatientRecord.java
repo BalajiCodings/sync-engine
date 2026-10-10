@@ -7,6 +7,7 @@ import lombok.Setter;
 import org.springframework.data.domain.Persistable;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -40,6 +41,9 @@ public class PatientRecord implements Persistable<UUID> {
     
  // Add to PatientRecord.java
     private Instant deletedAt;
+    
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private Long dosesAdministered;
 
 
     @PrePersist

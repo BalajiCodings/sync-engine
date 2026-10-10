@@ -1,5 +1,6 @@
 package com.balaji.sync_engine.service;
 
+import com.balaji.sync_engine.crdt.PnCounterCodec;
 import com.balaji.sync_engine.entity.FieldState;
 import com.balaji.sync_engine.entity.PatientRecord;
 import com.balaji.sync_engine.repository.FieldStateRepository;
@@ -17,13 +18,16 @@ public class PatientRecordProjector {
 
     private final PatientRecordRepository patientRepository;
     private final FieldStateRepository fieldStateRepository;
+    private final PnCounterCodec counterCodec;
 
     public PatientRecordProjector(PatientRecordRepository patientRepository,
-                                   FieldStateRepository fieldStateRepository) {
+                                  FieldStateRepository fieldStateRepository,
+                                  PnCounterCodec counterCodec) {
         this.patientRepository = patientRepository;
         this.fieldStateRepository = fieldStateRepository;
+        this.counterCodec = counterCodec;
     }
-
+    
     @Transactional
     public void project(UUID entityId) {
         List<FieldState> fields = fieldStateRepository.findByEntityTypeAndEntityId(ENTITY_TYPE, entityId);
@@ -43,6 +47,7 @@ public class PatientRecordProjector {
 
         patientRepository.save(record);
     }
+    
 
     @Transactional
     public void remove(UUID entityId) {
@@ -55,6 +60,8 @@ public class PatientRecordProjector {
             case "weight" -> record.setWeight(value == null ? null : Double.parseDouble(value));
             case "bloodPressure" -> record.setBloodPressure(value);
             case "dosage" -> record.setDosage(value);
+            case "dosesAdministered" -> record.setDosesAdministered(
+                    value == null ? null : counterCodec.parse(value).value());
             default -> { /* unmapped field — ignored for now */ }
         }
     }
