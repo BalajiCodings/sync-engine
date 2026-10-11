@@ -138,12 +138,9 @@ public class ConflictReviewService {
         projector.restore(conflict.getEntityId());
     }
 
-    /** Writes the decision into field_state AND appends it to the event log so devices receive it on pull. */
+    /** Appends the decision to the event log AND writes it into field_state, so devices receive it on pull. */
     private void publishDecision(ConflictRecord conflict, String payloadJson) {
         String hlc = clock.tick().toString();
-
-        conflictResolutionService.applyAuthoritative(
-                conflict.getEntityType(), conflict.getEntityId(), payloadJson, hlc, SERVER_DEVICE_ID);
 
         ChangeEvent event = new ChangeEvent();
         event.setEventId(UUID.randomUUID());
@@ -153,7 +150,15 @@ public class ConflictReviewService {
         event.setDeviceId(SERVER_DEVICE_ID);
         event.setHlcTimestamp(hlc);
         event.setPayload(payloadJson);
-        changeEventRepository.save(event);
+
+        changeEventRepository.saveAndFlush(event);
+        Long seq = changeEventRepository.findServerSeq(event.getEventId());
+        if (seq == null) {
+            throw new IllegalStateException("Resolution event " + event.getEventId() + " has no server_seq");
+        }
+
+        conflictResolutionService.applyAuthoritative(
+                conflict.getEntityType(), conflict.getEntityId(), payloadJson, hlc, SERVER_DEVICE_ID, seq);
 
         conflict.setResolutionEventId(event.getEventId());
     }

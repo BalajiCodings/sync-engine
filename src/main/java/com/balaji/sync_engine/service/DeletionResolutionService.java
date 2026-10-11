@@ -1,12 +1,12 @@
 package com.balaji.sync_engine.service;
 
 import com.balaji.sync_engine.clock.HLCTimestamp;
+import com.balaji.sync_engine.entity.ChangeEvent;
 import com.balaji.sync_engine.entity.EntityDeletionState;
 import com.balaji.sync_engine.repository.EntityDeletionStateRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
-import java.util.UUID;
 
 @Service
 public class DeletionResolutionService {
@@ -17,51 +17,59 @@ public class DeletionResolutionService {
         this.deletionRepository = deletionRepository;
     }
 
-    public record DeletionCheckResult(boolean isDeleted, String reason) {}
+    public record DeletionCheckResult(boolean isDeleted, boolean restored, String reason) {
+        static DeletionCheckResult notDeleted() {
+            return new DeletionCheckResult(false, false, null);
+        }
+    }
 
     /**
-     * Call before applying a non-delete change. Determines whether the entity
-     * is currently deleted, and if the update should proceed anyway (update
-     * is causally/device-sequentially later than the delete) or be rejected.
+     * Call before applying a non-delete change. An update that causally follows the deletion
+     * (same device with a later clock, or a device that had received the deletion) is a deliberate
+     * restore. Anything else is a delete-vs-update conflict.
      */
-    public DeletionCheckResult checkBeforeUpdate(String entityType, UUID entityId,
-                                                  String updateHlc, String updateDeviceId) {
-        Optional<EntityDeletionState> deletion =
-                deletionRepository.findByEntityTypeAndEntityId(entityType, entityId);
-
+    public DeletionCheckResult checkBeforeUpdate(ChangeEvent update) {
+        Optional<EntityDeletionState> deletion = deletionRepository
+                .findByEntityTypeAndEntityId(update.getEntityType(), update.getEntityId());
         if (deletion.isEmpty()) {
-            return new DeletionCheckResult(false, null);
+            return DeletionCheckResult.notDeleted();
         }
 
         EntityDeletionState state = deletion.get();
-        boolean sameDevice = state.getDeletedByDeviceId().equals(updateDeviceId);
+        boolean sameDevice = state.getDeletedByDeviceId().equals(update.getDeviceId());
 
+        boolean followsDeletion;
         if (sameDevice) {
-            HLCTimestamp deletionTs = HLCTimestamp.parse(state.getDeletionHlc());
-            HLCTimestamp updateTs = HLCTimestamp.parse(updateHlc);
-            if (updateTs.compareTo(deletionTs) > 0) {
-                // Same device un-deleting its own prior delete via a later edit --
-                // treat as an explicit restore.
-                deletionRepository.deleteByEntityTypeAndEntityId(entityType, entityId);
-                return new DeletionCheckResult(false, null);
-            }
+            followsDeletion = HLCTimestamp.parse(update.getHlcTimestamp())
+                    .compareTo(HLCTimestamp.parse(state.getDeletionHlc())) > 0;
+        } else {
+            followsDeletion = state.getDeletionSeq() != null && update.getBasedOnSeq() != null
+                    && state.getDeletionSeq() <= update.getBasedOnSeq();
         }
 
-        // Different device editing a deleted entity -- this is a real conflict.
-        // Default policy: the update is rejected, but flagged for human review
-        // rather than silently discarded or silently resurrecting the record.
-        return new DeletionCheckResult(true,
-                "Entity was deleted by device '" + state.getDeletedByDeviceId()
-                + "' but device '" + updateDeviceId + "' attempted a concurrent update "
-                + "(Scenario: DELETE_UPDATE_CONFLICT) — requires manual review");
+        if (followsDeletion) {
+            deletionRepository.deleteByEntityTypeAndEntityId(update.getEntityType(), update.getEntityId());
+            return new DeletionCheckResult(false, true, null);
+        }
+
+        return new DeletionCheckResult(true, false,
+                "Entity was deleted by device '" + state.getDeletedByDeviceId() + "' but device '"
+                + update.getDeviceId() + "' updated it without having received the deletion "
+                + "(DELETE_UPDATE_CONFLICT) — requires manual review");
     }
 
-    public void recordDeletion(String entityType, UUID entityId, String deletionHlc, String deviceId) {
+    /** Idempotent: if the entity is already deleted, the first deletion stays the record of truth. */
+    public void recordDeletion(ChangeEvent deletion, long deletionSeq) {
+        if (deletionRepository.findByEntityTypeAndEntityId(
+                deletion.getEntityType(), deletion.getEntityId()).isPresent()) {
+            return;
+        }
         EntityDeletionState state = new EntityDeletionState();
-        state.setEntityType(entityType);
-        state.setEntityId(entityId);
-        state.setDeletionHlc(deletionHlc);
-        state.setDeletedByDeviceId(deviceId);
+        state.setEntityType(deletion.getEntityType());
+        state.setEntityId(deletion.getEntityId());
+        state.setDeletionHlc(deletion.getHlcTimestamp());
+        state.setDeletedByDeviceId(deletion.getDeviceId());
+        state.setDeletionSeq(deletionSeq);
         deletionRepository.save(state);
     }
 }

@@ -10,9 +10,6 @@ public class ManualReviewStrategy implements FieldMergeStrategy {
                 && input.currentDeviceId().equals(input.incomingDeviceId());
 
         if (sameDevice) {
-            // Sequential edits from the same device/lineage carry an implicit causal
-            // relationship -- there's no second party to be "concurrent" with.
-            // We can safely apply ordinary last-write-wins here without human review.
             HLCTimestamp current = HLCTimestamp.parse(input.currentHlc());
             HLCTimestamp incoming = HLCTimestamp.parse(input.incomingHlc());
 
@@ -24,10 +21,15 @@ public class ManualReviewStrategy implements FieldMergeStrategy {
                     "Same-device out-of-order update ignored (already-later value retained)");
         }
 
+        if (input.incomingObservedCurrent()) {
+            return MergeOutcome.resolved(input.incomingValue(),
+                    "Edit made after the writer had received the current value — sequential update, no review needed");
+        }
+
         return MergeOutcome.conflicted(
-                "Field '" + input.fieldName() + "' edited by two different devices "
-                + "(" + input.currentDeviceId() + " and " + input.incomingDeviceId() + ") — "
-                + "requires manual review (current=" + input.currentValue()
+                "Field '" + input.fieldName() + "' edited by two different devices ("
+                + input.currentDeviceId() + " and " + input.incomingDeviceId() + ") and the second had not "
+                + "received the first — requires manual review (current=" + input.currentValue()
                 + ", incoming=" + input.incomingValue() + ")"
         );
     }

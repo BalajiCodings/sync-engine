@@ -1,7 +1,7 @@
 package com.balaji.sync_engine.service;
 
-import com.balaji.sync_engine.dto.ConflictInfo;
 import com.balaji.sync_engine.conflict.ConflictType;
+import com.balaji.sync_engine.dto.ConflictInfo;
 import com.balaji.sync_engine.entity.ChangeEvent;
 import com.balaji.sync_engine.entity.ChangeType;
 import com.balaji.sync_engine.repository.ChangeEventRepository;
@@ -26,7 +26,8 @@ public class SyncEventProcessor {
                               ConflictResolutionService conflictResolutionService,
                               DeletionResolutionService deletionResolutionService,
                               PatientRecordProjector projector,
-                              ConflictReviewService conflictReviewService, IngestionLock ingestionLock) {
+                              ConflictReviewService conflictReviewService,
+                              IngestionLock ingestionLock) {
         this.changeEventRepository = changeEventRepository;
         this.conflictResolutionService = conflictResolutionService;
         this.deletionResolutionService = deletionResolutionService;
@@ -41,41 +42,69 @@ public class SyncEventProcessor {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public EventOutcome processEvent(ChangeEvent incoming) {
-    	ingestionLock.acquire(); 
-    	
+        ingestionLock.acquire();   // first line: arrival order must equal commit order
+
         if (changeEventRepository.existsById(incoming.getEventId())) {
             return new Skipped();
         }
 
+        validateBasedOnSeq(incoming);
+
+        // Append first, in this same transaction: everything below records this event's log position,
+        // and if anything throws, the event rolls back with it.
+        long seq = appendToLog(incoming);
+
         List<ConflictInfo> conflicts = new ArrayList<>();
 
         if (incoming.getChangeType() == ChangeType.DELETE) {
-            deletionResolutionService.recordDeletion(
-                    incoming.getEntityType(), incoming.getEntityId(),
-                    incoming.getHlcTimestamp(), incoming.getDeviceId());
+            deletionResolutionService.recordDeletion(incoming, seq);
             projector.markDeleted(incoming.getEntityId());
         } else {
-            var deletionCheck = deletionResolutionService.checkBeforeUpdate(
-                    incoming.getEntityType(), incoming.getEntityId(),
-                    incoming.getHlcTimestamp(), incoming.getDeviceId());
+            DeletionResolutionService.DeletionCheckResult deletion =
+                    deletionResolutionService.checkBeforeUpdate(incoming);
 
-            if (deletionCheck.isDeleted()) {
+            if (deletion.isDeleted()) {
                 conflicts.add(new ConflictInfo(
                         ConflictType.DELETE_UPDATE_CONFLICT, incoming.getEntityType(), incoming.getEntityId(),
                         incoming.getEventId(), null, null, null, null,
-                        incoming.getDeviceId(), deletionCheck.reason()));
-                changeEventRepository.save(incoming);
-                return new Applied(conflictReviewService.recordDetected(conflicts));   // <-- changed
+                        incoming.getDeviceId(), deletion.reason()));
+                return new Applied(conflictReviewService.recordDetected(conflicts));
             }
 
-            ConflictResolutionService.ApplyResult result = conflictResolutionService.applyIncomingChange(
-                    incoming.getEventId(), incoming.getEntityType(), incoming.getEntityId(),
-                    incoming.getPayload(), incoming.getHlcTimestamp(), incoming.getDeviceId());
-            conflicts.addAll(result.conflicts());
-            projector.project(incoming.getEntityId());
+            conflicts.addAll(conflictResolutionService.applyIncomingChange(incoming, seq).conflicts());
+
+            if (deletion.restored()) {
+                projector.restore(incoming.getEntityId());
+            } else {
+                projector.project(incoming.getEntityId());
+            }
         }
 
-        changeEventRepository.save(incoming);
-        return new Applied(conflictReviewService.recordDetected(conflicts));           // <-- changed
+        return new Applied(conflictReviewService.recordDetected(conflicts));
+    }
+
+    /** A device cannot have received positions the log does not have yet. */
+    private void validateBasedOnSeq(ChangeEvent incoming) {
+        Long basedOn = incoming.getBasedOnSeq();
+        if (basedOn == null) {
+            return;
+        }
+        if (basedOn < 0) {
+            throw new IllegalArgumentException("basedOnSeq must not be negative");
+        }
+        long head = changeEventRepository.findHeadSeq();
+        if (basedOn > head) {
+            throw new IllegalArgumentException(
+                    "basedOnSeq " + basedOn + " is ahead of the server log (head is " + head + ")");
+        }
+    }
+
+    private long appendToLog(ChangeEvent event) {
+        changeEventRepository.saveAndFlush(event);
+        Long seq = changeEventRepository.findServerSeq(event.getEventId());
+        if (seq == null) {
+            throw new IllegalStateException("Event " + event.getEventId() + " was saved but has no server_seq");
+        }
+        return seq;
     }
 }
