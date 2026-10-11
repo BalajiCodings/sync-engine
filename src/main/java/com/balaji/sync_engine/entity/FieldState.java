@@ -37,4 +37,8 @@ public class FieldState {
 
     @Column(nullable = false)
     private String lastWriteDeviceId;
+    
+    /** server_seq of the event behind the current value. Null on rows written before causality tracking. */
+    @Column(name = "last_write_seq")
+    private Long lastWriteSeq;
 }

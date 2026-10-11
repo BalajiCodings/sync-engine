@@ -11,6 +11,8 @@ import org.springframework.data.domain.Persistable;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.time.Instant;
 import java.util.UUID;
 
@@ -53,6 +55,12 @@ public class ChangeEvent implements Persistable<UUID> {
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     @Column(name = "server_seq", insertable = false, updatable = false, columnDefinition = "bigserial")
     private Long serverSeq;
+    
+    @Schema(description = "Log position this device had received when it made this change: send the nextCursor of "
+            + "your last fully-applied pull. Omit if the device has never pulled. Lets the server tell a "
+            + "deliberate follow-up edit from a genuinely concurrent one.")
+    @Column(name = "based_on_seq")
+    private Long basedOnSeq;
 
     @Transient
     private boolean isNew = true;

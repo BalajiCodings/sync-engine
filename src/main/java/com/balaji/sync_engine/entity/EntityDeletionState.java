@@ -31,4 +31,7 @@ public class EntityDeletionState {
 
     @Column(nullable = false)
     private String deletedByDeviceId;
+    
+    @Column(name = "deletion_seq")
+    private Long deletionSeq;
 }
