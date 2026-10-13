@@ -51,3 +51,51 @@ which is fine at this scale. Gaps in the numbering (rolled-back transactions)
 are harmless. Scaling past one lane would need a transaction-horizon cursor
 or a log broker. A brand-new device still replays full history (snapshot sync
 is a known limitation).
+
+# ADR 0003: Causality via the observed log position (not full vector clocks)
+
+**Status:** Accepted
+
+**Context:** Conflict detection guessed "same device = sequential,
+different device = concurrent". That raised false conflicts, e.g. after a
+device had already received the value it then edited.
+
+**Decision:** Each pushed event carries basedOnSeq, the server log position
+the device had received. Each field/deletion records the log position of
+the event that produced it. A write is sequential if its device authored the
+current value or basedOnSeq >= that position; otherwise it is concurrent.
+This is exact because delivery is gapless and ordered (ADR 0002).
+
+**Why not full vector clocks:** A vector clock stores one counter per
+device in every event, so its size grows with the number of devices ever
+seen. It earns that cost when replicas exchange data peer-to-peer, because
+there is no single ordering. Here every write flows through one server log,
+so one integer carries the same information in constant size. If phones ever
+synced directly with each other, vector clocks (or interval tree clocks)
+would become necessary.
+
+**Consequences:** Exact detection with O(1) metadata. Trust model:
+basedOnSeq is device-reported; a compromised authenticated device could claim
+too much and suppress conflict flags. Hardening: the server tracks the
+highest position it actually delivered to each device and caps the claim.
+Last-write-wins fields still rely on a correctly maintained HLC.
+
+
+# ADR 0001: PN-Counter CRDT for dosesAdministered
+
+**Status:** Accepted
+
+**Context:** Two offline devices can each record doses for the same patient.
+Last-write-wins would silently discard one device's doses; manual review is
+absurd for a count.
+
+**Decision:** Model the field as a state-based PN-Counter (per-device
+increment/decrement maps, merged by per-device maximum). The server accepts
+only a device's own entry. Counters change only via sync, never via REST.
+
+**Consequences:** Concurrent updates can never conflict and merging is
+idempotent. State grows with the number of distinct devices (see the
+vector-clock ADR). A device that loses its local state must resume from its
+last server-known entry, or its new increments are absorbed by max-merge.
+Text CRDTs (RGA) were considered for free-text fields and scoped out:
+multi-week effort, not justified for this project.

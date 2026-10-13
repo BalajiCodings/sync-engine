@@ -1,56 +1,59 @@
 package com.balaji.sync_engine.conflict;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.balaji.sync_engine.clock.HLCTimestamp;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 class ManualReviewStrategyTest {
 
     private final ManualReviewStrategy strategy = new ManualReviewStrategy();
 
-    private static String hlc(long time, String node) {
-        return new HLCTimestamp(time, 0, node).toString();
-    }
-
-    private static MergeInput input(String currentDevice, long currentTime,
-                                    String incomingDevice, long incomingTime, boolean observed) {
-        return new MergeInput("dosage", "250mg", hlc(currentTime, currentDevice), currentDevice,
-                "500mg", hlc(incomingTime, incomingDevice), incomingDevice, observed);
+    private static String hlc(long t) {
+        return new HLCTimestamp(t, 0, "n").toString();
     }
 
     @Test
-    void sameDeviceNewerEditIsSequential() {
-        MergeOutcome outcome = strategy.merge(input("deviceA", 1000, "deviceA", 2000, true));
-        assertFalse(outcome.conflict());
-        assertEquals("500mg", outcome.resolvedValue());
+    void sameDeviceLaterUpdateIsAccepted() {
+        MergeOutcome out = strategy.merge(new MergeInput("dosage", "500", hlc(1), "dev-a", "750", hlc(2), "dev-a"));
+        assertFalse(out.conflict());
+        assertEquals("750", out.resolvedValue());
     }
 
     @Test
-    void sameDeviceOlderEditIsIgnoredNotFlagged() {
-        MergeOutcome outcome = strategy.merge(input("deviceA", 2000, "deviceA", 1000, true));
-        assertFalse(outcome.conflict());
-        assertEquals("250mg", outcome.resolvedValue());
+    void sameDeviceOutOfOrderUpdateIsIgnored() {
+        MergeOutcome out = strategy.merge(new MergeInput("dosage", "750", hlc(2), "dev-a", "500", hlc(1), "dev-a"));
+        assertFalse(out.conflict());
+        assertEquals("750", out.resolvedValue());
     }
 
     @Test
-    void differentDeviceThatHadReceivedTheCurrentValueIsSequential() {
-        MergeOutcome outcome = strategy.merge(input("deviceA", 1000, "deviceB", 2000, true));
-        assertFalse(outcome.conflict());
-        assertEquals("500mg", outcome.resolvedValue());
+    void differentDevicesWithoutAwarenessIsAConflict() {
+        MergeOutcome out = strategy.merge(new MergeInput("dosage", "500", hlc(1), "dev-a", "750", hlc(2), "dev-b"));
+        assertTrue(out.conflict());
+        assertNull(out.resolvedValue());
+        assertTrue(out.reason().contains("dev-a") && out.reason().contains("dev-b"));
+        assertTrue(out.reason().contains("500") && out.reason().contains("750"));
     }
 
     @Test
-    void differentDeviceThatHadNotReceivedTheCurrentValueIsAConflict() {
-        MergeOutcome outcome = strategy.merge(input("deviceA", 1000, "deviceB", 2000, false));
-        assertTrue(outcome.conflict());
-        assertNull(outcome.resolvedValue());
+    void differentDevicesButIncomingSawTheCurrentValueIsSequential() {
+        MergeOutcome out = strategy.merge(
+                new MergeInput("dosage", "500", hlc(1), "dev-a", "750", hlc(2), "dev-b", true));
+        assertFalse(out.conflict());
+        assertEquals("750", out.resolvedValue());
     }
 
     @Test
-    void legacyInputWithoutCausalityKeepsTheOldBehaviour() {
-        MergeInput legacy = new MergeInput("dosage", "250mg", hlc(1000, "deviceA"), "deviceA",
-                "500mg", hlc(2000, "deviceB"), "deviceB");
-        assertTrue(strategy.merge(legacy).conflict());
+    void conflictIsDecidedByCausalityNotByWhoseClockIsLater() {
+        // incoming has the *earlier* timestamp but never saw current -> still a conflict
+        MergeOutcome out = strategy.merge(new MergeInput("dosage", "500", hlc(9), "dev-a", "750", hlc(1), "dev-b"));
+        assertTrue(out.conflict());
+    }
+
+    @Test
+    void nullCurrentDeviceIsNeverTreatedAsSameDevice() {
+        MergeOutcome out = strategy.merge(new MergeInput("dosage", "500", hlc(1), null, "750", hlc(2), null));
+        assertTrue(out.conflict());
     }
 }
