@@ -11,8 +11,7 @@ import com.balaji.sync_engine.service.SyncService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
-
-
+import jakarta.validation.Valid;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,7 +27,7 @@ import com.balaji.sync_engine.security.UserRepository;
 
 @Tag(name = "Sync", description = "Delta sync push/pull for offline-first devices")
 @RestController
-@RequestMapping("/api/sync")
+@RequestMapping({"/api/v1/sync", "/api/sync"})
 public class SyncController {
 
     private final SyncService syncService;
@@ -47,7 +46,7 @@ public class SyncController {
                     + "their timestamps. serverHlc is for clock synchronization only.")
     @PostMapping("/pull")
     @PreAuthorize("hasAnyRole('FIELD_WORKER', 'SUPERVISOR', 'ADMIN')")
-    public ResponseEntity<ApiResult<SyncPullResponse>> pull(@RequestBody SyncPullRequest request) {
+    public ResponseEntity<ApiResult<SyncPullResponse>> pull(@Valid @RequestBody SyncPullRequest request) {
         return ResponseEntity.ok(ApiResult.ok(syncService.pull(request)));
     }
 
@@ -60,8 +59,8 @@ public class SyncController {
     @ApiResponse(responseCode = "403", description = "Claimed deviceId does not match the authenticated account")
     @PostMapping("/push")
     @PreAuthorize("hasAnyRole('FIELD_WORKER', 'SUPERVISOR', 'ADMIN')")
-    public ResponseEntity<ApiResult<SyncPushResponse>> push(@RequestBody SyncPushRequest request,
-		            Authentication authentication) {
+    public ResponseEntity<ApiResult<SyncPushResponse>> push(@Valid @RequestBody SyncPushRequest request,
+                                                            Authentication authentication) {
 		if (request.changes() == null) {
 		throw new IllegalArgumentException("changes is required");
 		}

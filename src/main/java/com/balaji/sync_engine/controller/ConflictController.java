@@ -12,6 +12,7 @@ import com.balaji.sync_engine.service.ConflictReviewService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -31,7 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 @Tag(name = "Conflicts", description = "Review and resolve conflicts flagged during sync (SUPERVISOR/ADMIN only)")
 @RestController
-@RequestMapping("/api/conflicts")
+@RequestMapping({"/api/v1/conflicts", "/api/conflicts"})
 @PreAuthorize("hasAnyRole('SUPERVISOR', 'ADMIN')")
 public class ConflictController {
 
@@ -73,7 +74,7 @@ public class ConflictController {
     @ApiResponse(responseCode = "409", description = "Already resolved, or resolved concurrently by someone else")
     @PostMapping("/{id}/resolve")
     public ResponseEntity<ApiResult<ConflictView>> resolve(@PathVariable UUID id,
-                                                           @RequestBody ResolveConflictRequest request,
+                                                           @Valid @RequestBody ResolveConflictRequest request,
                                                            Authentication authentication) {
         ConflictRecord resolved = conflictReviewService.resolve(id, request, authentication.getName());
         return ResponseEntity.ok(ApiResult.ok(ConflictView.from(resolved)));
