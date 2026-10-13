@@ -16,7 +16,7 @@ public class JwtService {
     private final SecretKey key = Keys.hmacShaKeyFor(
             "change-this-to-a-real-256-bit-secret-loaded-from-env".getBytes());
 
-    private static final long EXPIRATION_MS = 1000 * 60 * 60 * 12; // 12 hours
+    private static final long ACCESS_TOKEN_EXPIRATION_MS = 1000 * 60 * 15; // 15 minutes
 
     public String generateToken(User user) {
         return Jwts.builder()
@@ -24,14 +24,13 @@ public class JwtService {
                 .claim("role", user.getRole().name())
                 .claim("deviceId", user.getDeviceId())
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + EXPIRATION_MS))
+                .expiration(new Date(System.currentTimeMillis() + ACCESS_TOKEN_EXPIRATION_MS))
                 .signWith(key)
                 .compact();
     }
 
     public String extractUsername(String token) {
-        return extractClaim(token, Jwts.claims().build().getSubject() != null
-                ? claims -> claims.getSubject() : claims -> claims.getSubject());
+        return parseClaims(token).getSubject();
     }
 
     public String extractUsername(String token, boolean dummy) {

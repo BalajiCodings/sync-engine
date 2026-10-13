@@ -2,6 +2,7 @@ package com.balaji.sync_engine.security;
 
 import jakarta.servlet.FilterChain;
 
+
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -14,12 +15,12 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.security.core.AuthenticationException;
 
 import io.jsonwebtoken.JwtException;
 
 import java.io.IOException;
 
-import javax.naming.AuthenticationException;
 
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
@@ -58,9 +59,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
             }
-        } catch (JwtException | IllegalArgumentException ex) {
-            // Expired, tampered, malformed, or unknown-user token: leave the request
-            // unauthenticated. ApiSecurityErrorHandler turns that into a 401 envelope.
+        } catch (JwtException | AuthenticationException | IllegalArgumentException ex) {
             SecurityContextHolder.clearContext();
             log.debug("Rejected bearer token: {}", ex.getMessage());
         }

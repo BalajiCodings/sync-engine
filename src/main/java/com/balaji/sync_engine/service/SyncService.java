@@ -59,40 +59,46 @@ public class SyncService {
 	        return Math.min(Math.max(requested, 1), MAX_PULL_LIMIT);
 	    }
 
-    public SyncPushResponse push(SyncPushRequest request) {
-        if (request.changes().size() > MAX_BATCH_SIZE) {
-            throw new IllegalArgumentException(
-                    "Batch too large: received " + request.changes().size()
-                    + " events, maximum is " + MAX_BATCH_SIZE
-                    + ". Split into smaller chunks and push sequentially.");
-        }
+	    public SyncPushResponse push(SyncPushRequest request) {
+	        if (request.changes() == null) {
+	            throw new IllegalArgumentException("changes is required");
+	        }
+	        if (request.changes().size() > MAX_BATCH_SIZE) {
+	            throw new IllegalArgumentException(
+	                    "Batch too large: received " + request.changes().size()
+	                    + " events, maximum is " + MAX_BATCH_SIZE
+	                    + ". Split into smaller chunks and push sequentially.");
+	        }
 
-        List<ConflictInfo> allConflicts = new ArrayList<>();
-        List<RejectedEvent> rejected = new ArrayList<>();
-        int accepted = 0;
+	        List<ConflictInfo> allConflicts = new ArrayList<>();
+	        List<RejectedEvent> rejected = new ArrayList<>();
+	        int accepted = 0;
 
-        for (ChangeEvent incoming : request.changes()) {
-            HLCTimestamp incomingTs = HLCTimestamp.parse(incoming.getHlcTimestamp());
-            clock.update(incomingTs);
+	        for (ChangeEvent incoming : request.changes()) {
+	            try {
+	                if (incoming.getHlcTimestamp() == null || incoming.getHlcTimestamp().isBlank()) {
+	                    throw new IllegalArgumentException("hlcTimestamp is required");
+	                }
+	                HLCTimestamp incomingTs = HLCTimestamp.parse(incoming.getHlcTimestamp());
+	                clock.update(incomingTs);
 
-            try {
-                SyncEventProcessor.EventOutcome outcome = eventProcessor.processEvent(incoming);
+	                SyncEventProcessor.EventOutcome outcome = eventProcessor.processEvent(incoming);
 
-                switch (outcome) {
-                    case SyncEventProcessor.Skipped ignored -> {
-                        // already applied in a prior push — idempotent no-op
-                    }
-                    case SyncEventProcessor.Applied applied -> {
-                        allConflicts.addAll(applied.conflicts());
-                        accepted++;
-                    }
-                }
-            } catch (Exception ex) {
-                rejected.add(new RejectedEvent(incoming.getEventId(), ex.getMessage()));
-            }
-        }
+	                switch (outcome) {
+	                    case SyncEventProcessor.Skipped ignored -> {
+	                        // already applied in a prior push — idempotent no-op
+	                    }
+	                    case SyncEventProcessor.Applied applied -> {
+	                        allConflicts.addAll(applied.conflicts());
+	                        accepted++;
+	                    }
+	                }
+	            } catch (Exception ex) {
+	                rejected.add(new RejectedEvent(incoming.getEventId(), ex.getMessage()));
+	            }
+	        }
 
-        HLCTimestamp checkpoint = clock.tick();
-        return new SyncPushResponse(accepted, allConflicts, rejected, checkpoint.toString());
-    }
+	        HLCTimestamp checkpoint = clock.tick();
+	        return new SyncPushResponse(accepted, allConflicts, rejected, checkpoint.toString());
+	    }
 }

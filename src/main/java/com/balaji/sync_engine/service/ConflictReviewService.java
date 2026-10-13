@@ -31,6 +31,7 @@ public class ConflictReviewService {
     private final HybridLogicalClock clock;
     private final JsonMapper jsonMapper;
     private final IngestionLock ingestionLock;
+    private final ChangeLogNotifier changeLogNotifier;
 
     public ConflictReviewService(ConflictRecordRepository conflictRepository,
                                  FieldStateRepository fieldStateRepository,
@@ -39,7 +40,9 @@ public class ConflictReviewService {
                                  ConflictResolutionService conflictResolutionService,
                                  PatientRecordProjector projector,
                                  HybridLogicalClock clock,
-                                 JsonMapper jsonMapper, IngestionLock ingestionLock) {
+                                 JsonMapper jsonMapper,
+                                 IngestionLock ingestionLock,
+                                 ChangeLogNotifier changeLogNotifier) {
         this.conflictRepository = conflictRepository;
         this.fieldStateRepository = fieldStateRepository;
         this.deletionStateRepository = deletionStateRepository;
@@ -49,8 +52,8 @@ public class ConflictReviewService {
         this.clock = clock;
         this.jsonMapper = jsonMapper;
         this.ingestionLock = ingestionLock;
+        this.changeLogNotifier = changeLogNotifier;
     }
-
     /** Persists detected conflicts; joins the caller's transaction so case and event commit together. */
     @Transactional
     public List<ConflictInfo> recordDetected(List<ConflictInfo> detected) {
@@ -161,6 +164,7 @@ public class ConflictReviewService {
                 conflict.getEntityType(), conflict.getEntityId(), payloadJson, hlc, SERVER_DEVICE_ID, seq);
 
         conflict.setResolutionEventId(event.getEventId());
+        changeLogNotifier.appended(SERVER_DEVICE_ID);
     }
 
     private void validate(ConflictRecord conflict, ResolveConflictRequest request) {

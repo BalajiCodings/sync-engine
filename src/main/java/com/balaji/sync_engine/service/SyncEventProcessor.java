@@ -21,19 +21,22 @@ public class SyncEventProcessor {
     private final PatientRecordProjector projector;
     private final ConflictReviewService conflictReviewService;
     private final IngestionLock ingestionLock;
+    private final ChangeLogNotifier changeLogNotifier;
 
     public SyncEventProcessor(ChangeEventRepository changeEventRepository,
                               ConflictResolutionService conflictResolutionService,
                               DeletionResolutionService deletionResolutionService,
                               PatientRecordProjector projector,
                               ConflictReviewService conflictReviewService,
-                              IngestionLock ingestionLock) {
+                              IngestionLock ingestionLock,
+                              ChangeLogNotifier changeLogNotifier) {
         this.changeEventRepository = changeEventRepository;
         this.conflictResolutionService = conflictResolutionService;
         this.deletionResolutionService = deletionResolutionService;
         this.projector = projector;
         this.conflictReviewService = conflictReviewService;
         this.ingestionLock = ingestionLock;
+        this.changeLogNotifier = changeLogNotifier;
     }
 
     public sealed interface EventOutcome permits Skipped, Applied {}
@@ -43,6 +46,8 @@ public class SyncEventProcessor {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public EventOutcome processEvent(ChangeEvent incoming) {
         ingestionLock.acquire();   // first line: arrival order must equal commit order
+
+        validateRequiredFields(incoming);
 
         if (changeEventRepository.existsById(incoming.getEventId())) {
             return new Skipped();
@@ -68,6 +73,7 @@ public class SyncEventProcessor {
                         ConflictType.DELETE_UPDATE_CONFLICT, incoming.getEntityType(), incoming.getEntityId(),
                         incoming.getEventId(), null, null, null, null,
                         incoming.getDeviceId(), deletion.reason()));
+                changeLogNotifier.appended(incoming.getDeviceId());
                 return new Applied(conflictReviewService.recordDetected(conflicts));
             }
 
@@ -80,7 +86,30 @@ public class SyncEventProcessor {
             }
         }
 
+        changeLogNotifier.appended(incoming.getDeviceId());
         return new Applied(conflictReviewService.recordDetected(conflicts));
+    }
+
+    private void validateRequiredFields(ChangeEvent incoming) {
+        if (incoming.getEventId() == null) {
+            throw new IllegalArgumentException("eventId is required");
+        }
+        if (incoming.getEntityType() == null || incoming.getEntityType().isBlank()) {
+            throw new IllegalArgumentException("entityType is required");
+        }
+        if (incoming.getEntityId() == null) {
+            throw new IllegalArgumentException("entityId is required");
+        }
+        if (incoming.getChangeType() == null) {
+            throw new IllegalArgumentException("changeType is required");
+        }
+        if (incoming.getDeviceId() == null || incoming.getDeviceId().isBlank()) {
+            throw new IllegalArgumentException("deviceId is required");
+        }
+        if (incoming.getChangeType() != ChangeType.DELETE
+                && (incoming.getPayload() == null || incoming.getPayload().isBlank())) {
+            throw new IllegalArgumentException("payload is required for " + incoming.getChangeType());
+        }
     }
 
     /** A device cannot have received positions the log does not have yet. */

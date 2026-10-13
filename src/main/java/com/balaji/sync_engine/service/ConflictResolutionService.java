@@ -52,6 +52,9 @@ public class ConflictResolutionService {
                     incoming.getEntityType(), incoming.getEntityId(), fieldName);
 
             if (existing.isEmpty()) {
+                if (incomingValue == null) {
+                    return; // Do not create field_state rows for null fields on first write
+                }
                 String initial = strategy.onFirstWrite(fieldName, incomingValue, incoming.getDeviceId());
                 saveFieldState(incoming.getEntityType(), incoming.getEntityId(), fieldName, initial,
                         incoming.getHlcTimestamp(), incoming.getDeviceId(), incomingSeq);

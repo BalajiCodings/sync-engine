@@ -1,22 +1,20 @@
 package com.balaji.sync_engine.service;
 
 import com.balaji.sync_engine.clock.HybridLogicalClock;
-
-
 import com.balaji.sync_engine.entity.ChangeEvent;
 import com.balaji.sync_engine.entity.ChangeType;
 import com.balaji.sync_engine.entity.PatientRecord;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-
 import com.balaji.sync_engine.repository.ChangeEventRepository;
 import com.balaji.sync_engine.repository.PatientRecordRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import tools.jackson.databind.json.JsonMapper;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.json.JsonMapper;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 
@@ -28,37 +26,44 @@ public class PatientRecordService {
 
     private final PatientRecordRepository patientRepository;
     private final ChangeEventRepository changeEventRepository;
+    private final SyncEventProcessor syncEventProcessor;
     private final JsonMapper jsonMapper;
     private final HybridLogicalClock clock;
-    private final IngestionLock ingestionLock;
 
     public PatientRecordService(PatientRecordRepository patientRepository,
-                                 ChangeEventRepository changeEventRepository,
-                                 JsonMapper jsonMapper,
-                                 HybridLogicalClock clock, IngestionLock ingestionLock) {
+                                ChangeEventRepository changeEventRepository,
+                                SyncEventProcessor syncEventProcessor,
+                                JsonMapper jsonMapper,
+                                HybridLogicalClock clock) {
         this.patientRepository = patientRepository;
         this.changeEventRepository = changeEventRepository;
+        this.syncEventProcessor = syncEventProcessor;
         this.jsonMapper = jsonMapper;
         this.clock = clock;
-        this.ingestionLock = ingestionLock;
     }
 
     @Transactional
     public PatientRecord create(PatientRecord record) {
-    	ingestionLock.acquire(); 
-    	
-        if (record.getId() == null) {
-            record.setId(UUID.randomUUID());
+        if (record.getPatientName() == null || record.getPatientName().isBlank()) {
+            throw new IllegalArgumentException("patientName is required");
         }
-        PatientRecord saved = patientRepository.save(record);
-        logChange(saved.getId(), ChangeType.CREATE, saved);
-        return saved;
+        UUID id = record.getId() != null ? record.getId() : UUID.randomUUID();
+        ChangeEvent event = buildServerEvent(id, ChangeType.CREATE, toFieldMap(record));
+        syncEventProcessor.processEvent(event);
+        return findById(id);
     }
-    
+
+    @Transactional(readOnly = true)
     public List<PatientRecord> findAll() {
         return patientRepository.findAll();
     }
 
+    @Transactional(readOnly = true)
+    public Page<PatientRecord> findAll(Pageable pageable) {
+        return patientRepository.findAllByDeletedAtIsNull(pageable);
+    }
+
+    @Transactional(readOnly = true)
     public PatientRecord findById(UUID id) {
         return patientRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("PatientRecord not found: " + id));
@@ -66,40 +71,41 @@ public class PatientRecordService {
 
     @Transactional
     public PatientRecord update(UUID id, PatientRecord updated) {
-    	ingestionLock.acquire(); 
-        PatientRecord existing = findById(id);
-        existing.setPatientName(updated.getPatientName());
-        existing.setWeight(updated.getWeight());
-        existing.setBloodPressure(updated.getBloodPressure());
-        existing.setDosage(updated.getDosage());
-        PatientRecord saved = patientRepository.save(existing);
-        logChange(saved.getId(), ChangeType.UPDATE, saved);
-        return saved;
+        findById(id); // Ensure 404 if record does not exist
+        if (updated.getPatientName() == null || updated.getPatientName().isBlank()) {
+            throw new IllegalArgumentException("patientName is required");
+        }
+        ChangeEvent event = buildServerEvent(id, ChangeType.UPDATE, toFieldMap(updated));
+        syncEventProcessor.processEvent(event);
+        return findById(id);
     }
 
     @Transactional
     public void delete(UUID id) {
-    	ingestionLock.acquire(); 
-        PatientRecord existing = findById(id);
-        existing.setDeletedAt(java.time.Instant.now());
-        patientRepository.save(existing);
-        logChange(id, ChangeType.DELETE, existing);
-    }
-    
- // PatientRecordService.java
-    public Page<PatientRecord> findAll(Pageable pageable) {
-        return patientRepository.findAllByDeletedAtIsNull(pageable);
+        findById(id); // Ensure 404 if record does not exist
+        ChangeEvent event = buildServerEvent(id, ChangeType.DELETE, null);
+        syncEventProcessor.processEvent(event);
     }
 
-    private void logChange(UUID entityId, ChangeType changeType, PatientRecord record) {
+    private ChangeEvent buildServerEvent(UUID entityId, ChangeType changeType, Map<String, Object> fields) {
         ChangeEvent event = new ChangeEvent();
-        event.setEventId(UUID.randomUUID());   // ← new line — we generate it explicitly now
+        event.setEventId(UUID.randomUUID());
         event.setEntityType(ENTITY_TYPE);
         event.setEntityId(entityId);
         event.setChangeType(changeType);
         event.setDeviceId(SERVER_DEVICE_ID);
         event.setHlcTimestamp(clock.tick().toString());
-        event.setPayload(jsonMapper.writeValueAsString(record));
-        changeEventRepository.save(event);
+        event.setBasedOnSeq(changeEventRepository.findHeadSeq());
+        event.setPayload(fields == null ? "{}" : jsonMapper.writeValueAsString(fields));
+        return event;
+    }
+
+    private Map<String, Object> toFieldMap(PatientRecord record) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("patientName", record.getPatientName());
+        map.put("weight", record.getWeight());
+        map.put("bloodPressure", record.getBloodPressure());
+        map.put("dosage", record.getDosage());
+        return map;
     }
 }
