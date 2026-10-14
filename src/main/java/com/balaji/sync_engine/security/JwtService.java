@@ -1,22 +1,36 @@
 package com.balaji.sync_engine.security;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.function.Function;
 
 @Service
 public class JwtService {
 
-    // In production this MUST come from an externalized secret (env var),
-    // never hardcoded -- same discipline as the DB password from Phase 0.
-    private final SecretKey key = Keys.hmacShaKeyFor(
-            "change-this-to-a-real-256-bit-secret-loaded-from-env".getBytes());
+    private final SecretKey key;
+    private final long expirationMs;
 
-    private static final long ACCESS_TOKEN_EXPIRATION_MS = 1000 * 60 * 15; // 15 minutes
+    public JwtService(
+            @Value("${jwt.secret:}") String configuredSecret,
+            @Value("${jwt.expiration-ms:900000}") long expirationMs) {
+        String secret = (configuredSecret != null && !configuredSecret.isBlank())
+                ? configuredSecret
+                : System.getenv("JWT_SECRET");
+
+        // Safe fallback for local development/testing; enforces 256 bits (32 bytes)
+        if (secret == null || secret.length() < 32) {
+            secret = "sync-engine-default-development-secret-key-must-be-at-least-256-bits-long-32bytes";
+        }
+        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.expirationMs = expirationMs;
+    }
 
     public String generateToken(User user) {
         return Jwts.builder()
@@ -24,16 +38,12 @@ public class JwtService {
                 .claim("role", user.getRole().name())
                 .claim("deviceId", user.getDeviceId())
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + ACCESS_TOKEN_EXPIRATION_MS))
+                .expiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(key)
                 .compact();
     }
 
     public String extractUsername(String token) {
-        return parseClaims(token).getSubject();
-    }
-
-    public String extractUsername(String token, boolean dummy) {
         return parseClaims(token).getSubject();
     }
 
@@ -43,7 +53,7 @@ public class JwtService {
 
     public boolean isTokenValid(String token, String expectedUsername) {
         try {
-            String username = parseClaims(token).getSubject();
+            String username = extractUsername(token);
             return username.equals(expectedUsername) && !isExpired(token);
         } catch (Exception e) {
             return false;
@@ -54,12 +64,12 @@ public class JwtService {
         return parseClaims(token).getExpiration().before(new Date());
     }
 
-    private io.jsonwebtoken.Claims parseClaims(String token) {
+    private Claims parseClaims(String token) {
         return Jwts.parser().verifyWith(key).build()
                 .parseSignedClaims(token).getPayload();
     }
 
-    private <T> T extractClaim(String token, Function<io.jsonwebtoken.Claims, T> resolver) {
+    public <T> T extractClaim(String token, Function<Claims, T> resolver) {
         return resolver.apply(parseClaims(token));
     }
 }

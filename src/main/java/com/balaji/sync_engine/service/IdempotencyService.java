@@ -24,13 +24,16 @@ public class IdempotencyService {
     private final ConcurrentHashMap<String, StoredEntry> store = new ConcurrentHashMap<>();
     private final Clock clock;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public IdempotencyService() {
         this(Clock.systemUTC());
     }
 
+    // Secondary constructor for unit testing with mutable clock
     public IdempotencyService(Clock clock) {
         this.clock = clock;
     }
+ 
 
     @SuppressWarnings("unchecked")
     public <T> T execute(String scope, String idempotencyKey, String requestPayload, Supplier<T> action) {
