@@ -1,5 +1,5 @@
 -- 1. App User Table
-CREATE TABLE app_user (
+CREATE TABLE IF NOT EXISTS app_user (
     id UUID PRIMARY KEY,
     username VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
@@ -9,7 +9,7 @@ CREATE TABLE app_user (
 );
 
 -- 2. Change Event Table (Immutable Event Log)
-CREATE TABLE change_event (
+CREATE TABLE IF NOT EXISTS change_event (
     event_id UUID PRIMARY KEY,
     entity_type VARCHAR(255) NOT NULL,
     entity_id UUID NOT NULL,
@@ -22,11 +22,11 @@ CREATE TABLE change_event (
     based_on_seq BIGINT
 );
 
-CREATE UNIQUE INDEX idx_change_event_server_seq ON change_event(server_seq);
-CREATE INDEX idx_change_event_entity ON change_event(entity_type, entity_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_change_event_server_seq ON change_event(server_seq);
+CREATE INDEX IF NOT EXISTS idx_change_event_entity ON change_event(entity_type, entity_id);
 
 -- 3. Field State Table (Resolved Per-Field Attributes)
-CREATE TABLE field_state (
+CREATE TABLE IF NOT EXISTS field_state (
     id UUID PRIMARY KEY,
     entity_type VARCHAR(255) NOT NULL,
     entity_id UUID NOT NULL,
@@ -38,10 +38,10 @@ CREATE TABLE field_state (
     CONSTRAINT uq_field_state_entity_field UNIQUE (entity_type, entity_id, field_name)
 );
 
-CREATE INDEX idx_field_state_lookup ON field_state(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_field_state_lookup ON field_state(entity_type, entity_id);
 
 -- 4. Entity Deletion State Table (Delete Race Tracking)
-CREATE TABLE entity_deletion_state (
+CREATE TABLE IF NOT EXISTS entity_deletion_state (
     id UUID PRIMARY KEY,
     entity_type VARCHAR(255) NOT NULL,
     entity_id UUID NOT NULL,
@@ -52,7 +52,7 @@ CREATE TABLE entity_deletion_state (
 );
 
 -- 5. Patient Record Table (Read Model Materialized View)
-CREATE TABLE patient_record (
+CREATE TABLE IF NOT EXISTS patient_record (
     id UUID PRIMARY KEY,
     patient_name VARCHAR(255) NOT NULL,
     weight DOUBLE PRECISION,
@@ -64,10 +64,10 @@ CREATE TABLE patient_record (
     deleted_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_patient_record_deleted ON patient_record(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_patient_record_deleted ON patient_record(deleted_at);
 
 -- 6. Conflict Record Table (Supervisory Review Queue)
-CREATE TABLE conflict_record (
+CREATE TABLE IF NOT EXISTS conflict_record (
     id UUID PRIMARY KEY,
     version BIGINT NOT NULL DEFAULT 0,
     conflict_type VARCHAR(50) NOT NULL,
@@ -89,4 +89,4 @@ CREATE TABLE conflict_record (
     detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_conflict_status_detected ON conflict_record(status, detected_at);
+CREATE INDEX IF NOT EXISTS idx_conflict_status_detected ON conflict_record(status, detected_at);

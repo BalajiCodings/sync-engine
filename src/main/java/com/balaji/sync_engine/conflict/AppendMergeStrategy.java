@@ -37,7 +37,13 @@ public class AppendMergeStrategy implements FieldMergeStrategy {
                 }
             }
         } catch (IllegalArgumentException ignored) {
-            // Fall back to lexical comparison if non-HLC strings were passed in unit tests
+            // Fall back to comparing timestamp strings directly if test/dummy timestamps were provided
+            if (currentHlc != null && incomingHlc != null) {
+                int cmp = currentHlc.compareTo(incomingHlc);
+                if (cmp != 0) {
+                    return cmp < 0;
+                }
+            }
         }
         return current.compareTo(incoming) <= 0;
     }
