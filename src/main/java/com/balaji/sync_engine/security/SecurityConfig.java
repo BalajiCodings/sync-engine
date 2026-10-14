@@ -63,6 +63,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                     .requestMatchers("/api/v1/auth/**", "/api/auth/**").permitAll()
                     .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                    .requestMatchers("/actuator/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/v1/sync/stream", "/api/sync/stream").permitAll()
                     .anyRequest().authenticated()
             )

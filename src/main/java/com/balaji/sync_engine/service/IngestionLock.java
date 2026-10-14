@@ -12,19 +12,21 @@ public class IngestionLock {
     private static final long LOCK_KEY = 7_261_001L;
 
     private final JdbcTemplate jdbcTemplate;
+    private final SyncMetrics syncMetrics;
 
-    public IngestionLock(JdbcTemplate jdbcTemplate) {
+    public IngestionLock(JdbcTemplate jdbcTemplate, SyncMetrics syncMetrics) {
         this.jdbcTemplate = jdbcTemplate;
+        this.syncMetrics = syncMetrics;
     }
 
     /**
      * Waits until no other transaction is appending to the event log, then holds the lock until the
-     * CALLER's transaction ends. Call it as the FIRST statement of every transaction that writes a
-     * ChangeEvent. MANDATORY: fails loudly without a transaction, since a lock released immediately
-     * would protect nothing.
+     * CALLER's transaction ends. Measures lock wait time via Micrometer Timer.
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void acquire() {
-        jdbcTemplate.query("select pg_advisory_xact_lock(?)", ps -> ps.setLong(1, LOCK_KEY), rs -> { });
+        syncMetrics.recordLockWait(() ->
+            jdbcTemplate.query("select pg_advisory_xact_lock(?)", ps -> ps.setLong(1, LOCK_KEY), rs -> { })
+        );
     }
 }

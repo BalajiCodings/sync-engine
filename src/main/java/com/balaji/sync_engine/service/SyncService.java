@@ -6,10 +6,7 @@ import com.balaji.sync_engine.dto.*;
 import com.balaji.sync_engine.entity.ChangeEvent;
 import com.balaji.sync_engine.repository.ChangeEventRepository;
 
-import io.swagger.v3.oas.annotations.Operation;
-
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -19,21 +16,23 @@ import java.util.List;
 public class SyncService {
 
     private static final int MAX_BATCH_SIZE = 200;
+    private static final int DEFAULT_PULL_LIMIT = 500;
+    private static final int MAX_PULL_LIMIT = 1000;
 
     private final ChangeEventRepository changeEventRepository;
     private final HybridLogicalClock clock;
     private final SyncEventProcessor eventProcessor;
+    private final SyncMetrics syncMetrics;
 
     public SyncService(ChangeEventRepository changeEventRepository,
-                        HybridLogicalClock clock,
-                        SyncEventProcessor eventProcessor) {
+                       HybridLogicalClock clock,
+                       SyncEventProcessor eventProcessor,
+                       SyncMetrics syncMetrics) {
         this.changeEventRepository = changeEventRepository;
         this.clock = clock;
         this.eventProcessor = eventProcessor;
+        this.syncMetrics = syncMetrics;
     }
-
-    private static final int DEFAULT_PULL_LIMIT = 500;
-    private static final int MAX_PULL_LIMIT = 1000;
 
     public SyncPullResponse pull(SyncPullRequest request) {
         int limit = resolveLimit(request.limit());
@@ -42,7 +41,6 @@ public class SyncService {
             throw new IllegalArgumentException("cursor must not be negative");
         }
 
-        // Fetch one extra row only to learn whether more remain, without a COUNT query.
         List<ChangeEvent> batch = changeEventRepository
                 .findByServerSeqGreaterThanOrderByServerSeqAsc(cursor, PageRequest.of(0, limit + 1));
 
@@ -52,53 +50,71 @@ public class SyncService {
         long nextCursor = changes.isEmpty() ? cursor : changes.get(changes.size() - 1).getServerSeq();
         return new SyncPullResponse(changes, nextCursor, hasMore, clock.tick().toString());
     }
-	    private int resolveLimit(Integer requested) {
-	        if (requested == null) {
-	            return DEFAULT_PULL_LIMIT;
-	        }
-	        return Math.min(Math.max(requested, 1), MAX_PULL_LIMIT);
-	    }
 
-	    public SyncPushResponse push(SyncPushRequest request) {
-	        if (request.changes() == null) {
-	            throw new IllegalArgumentException("changes is required");
-	        }
-	        if (request.changes().size() > MAX_BATCH_SIZE) {
-	            throw new IllegalArgumentException(
-	                    "Batch too large: received " + request.changes().size()
-	                    + " events, maximum is " + MAX_BATCH_SIZE
-	                    + ". Split into smaller chunks and push sequentially.");
-	        }
+    private int resolveLimit(Integer requested) {
+        if (requested == null) {
+            return DEFAULT_PULL_LIMIT;
+        }
+        return Math.min(Math.max(requested, 1), MAX_PULL_LIMIT);
+    }
 
-	        List<ConflictInfo> allConflicts = new ArrayList<>();
-	        List<RejectedEvent> rejected = new ArrayList<>();
-	        int accepted = 0;
+    public SyncPushResponse push(SyncPushRequest request) {
+        if (request.changes() == null) {
+            throw new IllegalArgumentException("changes is required");
+        }
+        if (request.changes().size() > MAX_BATCH_SIZE) {
+            throw new IllegalArgumentException(
+                    "Batch too large: received " + request.changes().size()
+                    + " events, maximum is " + MAX_BATCH_SIZE
+                    + ". Split into smaller chunks and push sequentially.");
+        }
 
-	        for (ChangeEvent incoming : request.changes()) {
-	            try {
-	                if (incoming.getHlcTimestamp() == null || incoming.getHlcTimestamp().isBlank()) {
-	                    throw new IllegalArgumentException("hlcTimestamp is required");
-	                }
-	                HLCTimestamp incomingTs = HLCTimestamp.parse(incoming.getHlcTimestamp());
-	                clock.update(incomingTs);
+        try {
+            return syncMetrics.recordPushDuration(() -> processPushBatch(request));
+        } catch (Exception ex) {
+            syncMetrics.recordPushBatchFailure();
+            if (ex instanceof RuntimeException re) {
+                throw re;
+            }
+            throw new RuntimeException("Push batch processing failed", ex);
+        }
+    }
 
-	                SyncEventProcessor.EventOutcome outcome = eventProcessor.processEvent(incoming);
+    private SyncPushResponse processPushBatch(SyncPushRequest request) {
+        List<ConflictInfo> allConflicts = new ArrayList<>();
+        List<RejectedEvent> rejected = new ArrayList<>();
+        int accepted = 0;
+        int deduplicated = 0;
 
-	                switch (outcome) {
-	                    case SyncEventProcessor.Skipped ignored -> {
-	                        // already applied in a prior push — idempotent no-op
-	                    }
-	                    case SyncEventProcessor.Applied applied -> {
-	                        allConflicts.addAll(applied.conflicts());
-	                        accepted++;
-	                    }
-	                }
-	            } catch (Exception ex) {
-	                rejected.add(new RejectedEvent(incoming.getEventId(), ex.getMessage()));
-	            }
-	        }
+        for (ChangeEvent incoming : request.changes()) {
+            try {
+                if (incoming.getHlcTimestamp() == null || incoming.getHlcTimestamp().isBlank()) {
+                    throw new IllegalArgumentException("hlcTimestamp is required");
+                }
+                HLCTimestamp incomingTs = HLCTimestamp.parse(incoming.getHlcTimestamp());
+                clock.update(incomingTs);
 
-	        HLCTimestamp checkpoint = clock.tick();
-	        return new SyncPushResponse(accepted, allConflicts, rejected, checkpoint.toString());
-	    }
+                SyncEventProcessor.EventOutcome outcome = eventProcessor.processEvent(incoming);
+
+                switch (outcome) {
+                    case SyncEventProcessor.Skipped ignored -> {
+                        deduplicated++;
+                    }
+                    case SyncEventProcessor.Applied applied -> {
+                        for (ConflictInfo conflict : applied.conflicts()) {
+                            syncMetrics.recordConflict(conflict.conflictType());
+                            allConflicts.add(conflict);
+                        }
+                        accepted++;
+                    }
+                }
+            } catch (Exception ex) {
+                rejected.add(new RejectedEvent(incoming.getEventId(), ex.getMessage()));
+            }
+        }
+
+        syncMetrics.recordPushBatchSuccess(accepted, deduplicated);
+        HLCTimestamp checkpoint = clock.tick();
+        return new SyncPushResponse(accepted, allConflicts, rejected, checkpoint.toString());
+    }
 }

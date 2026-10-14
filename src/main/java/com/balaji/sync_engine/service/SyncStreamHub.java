@@ -44,8 +44,13 @@ public class SyncStreamHub {
         return thread;
     });
 
-    public SyncStreamHub(ChangeEventRepository changeEventRepository) {
+
+    private final SyncMetrics syncMetrics;
+
+
+    public SyncStreamHub(ChangeEventRepository changeEventRepository, SyncMetrics syncMetrics) {
         this.changeEventRepository = changeEventRepository;
+        this.syncMetrics = syncMetrics;
     }
 
     @PostConstruct
@@ -59,16 +64,26 @@ public class SyncStreamHub {
         connections.forEach(c -> completeQuietly(c.emitter()));
     }
 
-    /** Opens a stream for an already-authenticated principal. deviceId is null for supervisors/admins. */
     public SseEmitter open(String username, String deviceId) {
         evictOldest(username);
 
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MS);
         StreamConnection connection = new StreamConnection(username, deviceId, emitter);
-        emitter.onCompletion(() -> connections.remove(connection));
+        
+        emitter.onCompletion(() -> {
+            if (connections.remove(connection)) {
+                syncMetrics.sseConnectionClosed();
+            }
+        });
         emitter.onTimeout(emitter::complete);
-        emitter.onError(ex -> connections.remove(connection));
+        emitter.onError(ex -> {
+            if (connections.remove(connection)) {
+                syncMetrics.sseConnectionClosed();
+            }
+        });
+        
         connections.add(connection);
+        syncMetrics.sseConnectionOpened();
 
         send(connection, SseEmitter.event().name("ready").data(headJson()));
         return emitter;
@@ -122,12 +137,14 @@ public class SyncStreamHub {
 
     private boolean send(StreamConnection connection, SseEmitter.SseEventBuilder event) {
         try {
-            synchronized (connection.emitter()) {   // one writer at a time per connection
+            synchronized (connection.emitter()) {
                 connection.emitter().send(event);
             }
             return true;
         } catch (IOException | RuntimeException ex) {
-            connections.remove(connection);          // dead client
+            if (connections.remove(connection)) {
+                syncMetrics.sseConnectionClosed();
+            }
             completeQuietly(connection.emitter());
             return false;
         }
@@ -139,11 +156,12 @@ public class SyncStreamHub {
         int excess = mine.size() - (MAX_STREAMS_PER_PRINCIPAL - 1);
         for (int i = 0; i < excess; i++) {
             StreamConnection oldest = mine.get(i);
-            connections.remove(oldest);
+            if (connections.remove(oldest)) {
+                syncMetrics.sseConnectionClosed();
+            }
             completeQuietly(oldest.emitter());
         }
     }
-
     private void completeQuietly(SseEmitter emitter) {
         try {
             emitter.complete();
