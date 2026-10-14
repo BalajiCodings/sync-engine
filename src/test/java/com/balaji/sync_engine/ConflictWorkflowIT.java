@@ -108,7 +108,13 @@ class ConflictWorkflowIT extends BaseIntegrationTest {
     void optimisticLocking_preventsDoubleResolutionCollision() {
         UUID patientId = UUID.randomUUID();
 
-        // Create a pending conflict directly
+        // 1. Create patient record first so the projector does not violate patient_name NOT NULL constraint
+        PatientRecord patient = new PatientRecord();
+        patient.setId(patientId);
+        patient.setPatientName("Test Patient");
+        patientRecordRepository.save(patient);
+
+        // 2. Create a pending conflict
         ConflictRecord conflict = new ConflictRecord();
         conflict.setConflictType(com.balaji.sync_engine.conflict.ConflictType.FIELD_CONFLICT);
         conflict.setEntityType("PatientRecord");
@@ -120,11 +126,11 @@ class ConflictWorkflowIT extends BaseIntegrationTest {
         conflict.setStatus(ConflictStatus.PENDING);
         ConflictRecord saved = conflictRecordRepository.save(conflict);
 
-        // First supervisor resolves
+        // 3. First supervisor resolves
         ResolveConflictRequest req1 = new ResolveConflictRequest(ResolutionAction.KEEP_CURRENT, null);
         conflictReviewService.resolve(saved.getId(), req1, "supervisor_1");
 
-        // Second supervisor tries to resolve the stale entity instance
+        // 4. Second supervisor tries to resolve the stale entity instance
         ResolveConflictRequest req2 = new ResolveConflictRequest(ResolutionAction.ACCEPT_INCOMING, null);
 
         assertThrows(Exception.class, () -> {
