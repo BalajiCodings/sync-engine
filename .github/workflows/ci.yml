@@ -1,0 +1,53 @@
+name: Sync Engine CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: Build, Test & Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # 1. Check out repository code
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # 2. Set up JDK 21 with Maven caching
+      - name: Set up Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      # 3. Ensure Maven Wrapper has execution permissions
+      - name: Grant execute permission for Maven Wrapper
+        run: chmod +x mvnw
+
+      # 4. Build, run unit tests, and run integration tests with Testcontainers
+      - name: Build and Verify with Maven
+        run: ./mvnw clean verify -B
+
+      # 5. Archive JaCoCo Coverage HTML Report
+      - name: Upload JaCoCo Coverage Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jacoco-coverage-report
+          path: target/site/jacoco/
+          retention-days: 14
+
+      # 6. Publish CI Summary to GitHub Run Summary Page
+      - name: Generate Coverage Summary
+        if: always()
+        run: |
+          echo "### 🚀 CI Build & Verification Completed" >> $GITHUB_STEP_SUMMARY
+          if [ -f target/site/jacoco/index.html ]; then
+            echo "✅ **JaCoCo Coverage Report generated successfully.**" >> $GITHUB_STEP_SUMMARY
+            echo "You can download the full interactive HTML report from the **Artifacts** section above." >> $GITHUB_STEP_SUMMARY
+          fi

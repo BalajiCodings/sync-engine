@@ -195,6 +195,116 @@
 					</execution>
 				</executions>
 			</plugin>
+			
+						<!-- JaCoCo: Java Code Coverage Plugin for Unit & Integration Tests -->
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>0.8.12</version>
+				<executions>
+					<!-- 1. Prepares agent before Surefire unit tests -->
+					<execution>
+						<id>prepare-unit-tests</id>
+						<goals>
+							<goal>prepare-agent</goal>
+						</goals>
+						<configuration>
+							<destFile>${project.build.directory}/jacoco.exec</destFile>
+							<append>true</append>
+						</configuration>
+					</execution>
+
+					<!-- 2. Prepares agent before Failsafe integration tests -->
+					<execution>
+						<id>prepare-integration-tests</id>
+						<goals>
+							<goal>prepare-agent-integration</goal>
+						</goals>
+						<configuration>
+							<destFile>${project.build.directory}/jacoco.exec</destFile>
+							<append>true</append>
+						</configuration>
+					</execution>
+
+										<!-- 3. Generates unified HTML & XML coverage report -->
+					<execution>
+						<id>generate-coverage-report</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>report</goal>
+						</goals>
+						<configuration>
+							<dataFile>${project.build.directory}/jacoco.exec</dataFile>
+							<outputDirectory>${project.reporting.outputDirectory}/jacoco</outputDirectory>
+							<excludes>
+								<!-- Exclude entrypoint and configs -->
+								<exclude>com/balaji/sync_engine/SyncEngineApplication.class</exclude>
+								<exclude>com/balaji/sync_engine/config/**</exclude>
+								
+								<!-- Exclude POJOs, DTOs, Entities, and Exception Types -->
+								<exclude>com/balaji/sync_engine/dto/**</exclude>
+								<exclude>com/balaji/sync_engine/entity/**</exclude>
+								<exclude>com/balaji/sync_engine/exception/**</exclude>
+								<exclude>com/balaji/sync_engine/security/*Request*</exclude>
+								<exclude>com/balaji/sync_engine/security/*Response*</exclude>
+								<exclude>com/balaji/sync_engine/security/User.class</exclude>
+								<exclude>com/balaji/sync_engine/security/RefreshToken.class</exclude>
+
+								<!-- Exclude Web Controllers & Filter Glue (tested via Postman/E2E) -->
+								<exclude>com/balaji/sync_engine/controller/**</exclude>
+								<exclude>com/balaji/sync_engine/security/RateLimitingFilter*</exclude>
+								<exclude>com/balaji/sync_engine/security/JwtAuthFilter*</exclude>
+								<exclude>com/balaji/sync_engine/security/ApiSecurityErrorHandler*</exclude>
+								<exclude>com/balaji/sync_engine/security/AppUserDetailsService*</exclude>
+
+								<!-- Exclude test simulator helper -->
+								<exclude>com/balaji/sync_engine/simulator/**</exclude>
+							</excludes>
+						</configuration>
+					</execution>
+
+					<!-- 4. Quality Gate: Fails build if line coverage drops below threshold -->
+					<execution>
+						<id>coverage-quality-gate</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<configuration>
+							<dataFile>${project.build.directory}/jacoco.exec</dataFile>
+							<rules>
+								<rule>
+									<element>BUNDLE</element>
+									<limits>
+										<limit>
+											<counter>LINE</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.75</minimum>
+										</limit>
+									</limits>
+								</rule>
+							</rules>
+							<excludes>
+								<exclude>com/balaji/sync_engine/SyncEngineApplication.class</exclude>
+								<exclude>com/balaji/sync_engine/config/**</exclude>
+								<exclude>com/balaji/sync_engine/dto/**</exclude>
+								<exclude>com/balaji/sync_engine/entity/**</exclude>
+								<exclude>com/balaji/sync_engine/exception/**</exclude>
+								<exclude>com/balaji/sync_engine/security/*Request*</exclude>
+								<exclude>com/balaji/sync_engine/security/*Response*</exclude>
+								<exclude>com/balaji/sync_engine/security/User.class</exclude>
+								<exclude>com/balaji/sync_engine/security/RefreshToken.class</exclude>
+								<exclude>com/balaji/sync_engine/controller/**</exclude>
+								<exclude>com/balaji/sync_engine/security/RateLimitingFilter*</exclude>
+								<exclude>com/balaji/sync_engine/security/JwtAuthFilter*</exclude>
+								<exclude>com/balaji/sync_engine/security/ApiSecurityErrorHandler*</exclude>
+								<exclude>com/balaji/sync_engine/security/AppUserDetailsService*</exclude>
+								<exclude>com/balaji/sync_engine/simulator/**</exclude>
+							</excludes>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 		</plugins>
 	</build>
 
