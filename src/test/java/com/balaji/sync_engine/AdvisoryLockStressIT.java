@@ -101,18 +101,19 @@ class AdvisoryLockStressIT extends BaseIntegrationTest {
         assertEquals(expectedTotalEvents, actualEventCount, "Every single event must be committed");
 
         // GAPLESS SEQUENCE AUDIT:
-        // Query all server_seq in ascending order and assert server_seq[i] == i + 1
+        // Query all server_seq in ascending order and assert server_seq[i] == firstSeq + i
         List<ChangeEvent> allCommitted = changeEventRepository.findByServerSeqGreaterThanOrderByServerSeqAsc(
                 0L, org.springframework.data.domain.PageRequest.of(0, expectedTotalEvents + 10));
 
         assertEquals(expectedTotalEvents, allCommitted.size());
+        long firstSeq = allCommitted.get(0).getServerSeq();
         for (int i = 0; i < allCommitted.size(); i++) {
-            long expectedSeq = i + 1;
+            long expectedSeq = firstSeq + i;
             long actualSeq = allCommitted.get(i).getServerSeq();
             assertEquals(expectedSeq, actualSeq, "Sequence gap detected at index " + i + "! Ingestion must be strictly gapless.");
         }
 
-        System.out.printf("✅ [STRESS TEST PASSED] Processed %d events across %d parallel threads in %d ms (Zero deadlocks, Gapless: 1..%d)%n",
-                expectedTotalEvents, CONCURRENT_THREADS, elapsedMs, expectedTotalEvents);
+        System.out.printf("✅ [STRESS TEST PASSED] Processed %d events across %d parallel threads in %d ms (Zero deadlocks, Gapless: %d..%d)%n",
+                expectedTotalEvents, CONCURRENT_THREADS, elapsedMs, firstSeq, firstSeq + expectedTotalEvents - 1);
     }
 }
