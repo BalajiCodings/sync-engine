@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------
+  # 1. PostgreSQL 16 Database Service
+  # ----------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: sync-engine-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sync_engine_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sync_engine_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sync-network
+
+  # ----------------------------------------
+  # 2. Sync Engine Application Service
+  # ----------------------------------------
+  sync-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sync-engine-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      # Database connection
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/sync_engine_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgrespassword
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_FLYWAY_ENABLED: "true"
+
+      # Security & Admin Bootstrap credentials
+      ADMIN_BOOTSTRAP_USERNAME: admin
+      ADMIN_BOOTSTRAP_PASSWORD: adminpassword123
+      JWT_SECRET: production-grade-256-bit-secret-key-for-sync-engine-jwt-tokens-32b
+
+      # Observability
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics,prometheus
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+    networks:
+      - sync-network
+
+# ------------------------------------------
+# Persistent Storage Volumes & Networks
+# ------------------------------------------
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  sync-network:
+    driver: bridge
