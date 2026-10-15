@@ -17,7 +17,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      # 2. Set up JDK 21 using latest setup-java@v5 with Maven caching
+      # 2. Set up JDK 21 using setup-java@v5 with Maven caching
       - name: Set up Java 21 (Temurin)
         uses: actions/setup-java@v5
         with:
@@ -31,9 +31,20 @@ jobs:
 
       # 4. Build, run unit tests, and run integration tests with Testcontainers
       - name: Build and Verify with Maven
-        run: ./mvnw clean verify -B
+        run: ./mvnw clean verify -B --no-transfer-progress
 
-      # 5. Archive JaCoCo Coverage HTML Report
+      # 5. Diagnostic step: Print test failure logs if any test ever fails
+      - name: Print Test Failures (if any)
+        if: failure()
+        run: |
+          echo "=== SUREFIRE UNIT TEST REPORTS ==="
+          grep -rn "FAILURE!" target/surefire-reports/ || true
+          grep -rn "ERROR!" target/surefire-reports/ || true
+          echo "=== FAILSAFE INTEGRATION TEST REPORTS ==="
+          grep -rn "FAILURE!" target/failsafe-reports/ || true
+          grep -rn "ERROR!" target/failsafe-reports/ || true
+
+      # 6. Archive JaCoCo Coverage HTML Report
       - name: Upload JaCoCo Coverage Report
         uses: actions/upload-artifact@v4
         if: always()
@@ -43,7 +54,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      # 6. Publish CI Summary to GitHub Run Summary Page
+      # 7. Publish CI Summary to GitHub Run Summary Page
       - name: Generate Coverage Summary
         if: always()
         run: |

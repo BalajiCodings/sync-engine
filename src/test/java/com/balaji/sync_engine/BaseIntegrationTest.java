@@ -33,5 +33,10 @@ public abstract class BaseIntegrationTest {
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.flyway.enabled", () -> "true");
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
+        
+        // Ensure HikariCP connection pool has enough connections for parallel stress tests
+        registry.add("spring.datasource.hikari.maximum-pool-size", () -> "30");
+        registry.add("spring.datasource.hikari.minimum-idle", () -> "5");
+        registry.add("spring.datasource.hikari.connection-timeout", () -> "30000");
     }
 }
